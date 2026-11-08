@@ -20,6 +20,10 @@ export interface SampleEntry {
   voiceRange?: 'any' | 'lower' | 'higher' | VoiceRange;
   /** Optional credit shown with the sample, e.g. "Read by LeeSeJin · LibriVox (public domain)". */
   credit?: string;
+  /** Optional: what is said, written in the sample's language. */
+  transcript?: string;
+  /** Optional: a translation of the transcript, shown smaller underneath. */
+  translation?: string;
 }
 
 export function isSampleId(id: string | undefined): boolean {
@@ -46,6 +50,8 @@ export function parseManifest(json: unknown): SampleEntry[] {
       typeof e.language === 'string' &&
       e.language.trim().length > 0 &&
       (e.credit === undefined || typeof e.credit === 'string') &&
+      (e.transcript === undefined || typeof e.transcript === 'string') &&
+      (e.translation === undefined || typeof e.translation === 'string') &&
       !seen.has(e.file);
     if (ok) seen.add(e.file);
     return ok;
@@ -60,9 +66,13 @@ export function rangeFor(e: SampleEntry): VoiceRange {
 }
 
 /** "ko" → "Korean" (in the user's language); names are returned as given. */
+export function isLanguageCode(language: string): boolean {
+  return /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language.trim());
+}
+
 export function languageLabel(language: string): string {
   const code = language.trim();
-  if (/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(code)) {
+  if (isLanguageCode(code)) {
     try {
       return new Intl.DisplayNames(undefined, { type: 'language' }).of(code) ?? code;
     } catch {
@@ -111,5 +121,8 @@ export async function loadSample(e: SampleEntry): Promise<Phrase> {
     sourceStart: 0,
     sourceName: name,
     credit: e.credit?.trim() || undefined,
+    transcript: e.transcript?.trim() || undefined,
+    translation: e.translation?.trim() || undefined,
+    lang: isLanguageCode(e.language) ? e.language.trim() : undefined,
   };
 }

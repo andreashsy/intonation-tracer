@@ -21,11 +21,13 @@ import { formatHz, stToHz } from './pitchAxis.ts';
 import { PracticeView } from './practice/practiceView.ts';
 import { bindUnitMenus, getUnit, onUnitChange } from './units.ts';
 import { encodeWav } from './wav.ts';
+import { type HasTranscript, showTranscript } from './transcript.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const ui = {
   fileName: $<HTMLHeadingElement>('file-name'),
+  transcript: $<HTMLParagraphElement>('clip-transcript'),
   loadAnother: $<HTMLButtonElement>('load-another'),
   dropZone: $<HTMLElement>('drop-zone'),
   fileInput: $<HTMLInputElement>('file-input'),
@@ -128,8 +130,13 @@ setupFileInput(ui.dropZone, ui.fileInput, (file) => void loadFile(file));
 ui.loadAnother.addEventListener('click', () => ui.fileInput.click());
 ui.cancel.addEventListener('click', () => cancelLoad());
 
+/** Transcript for the next loadFile (set when opening a sample); any other load clears it. */
+let nextTranscript: HasTranscript | null = null;
+
 async function loadFile(file: File, fromMic = false): Promise<void> {
   const token = ++loadToken;
+  showTranscript(ui.transcript, nextTranscript);
+  nextTranscript = null;
   stopRecorder();
   stopWorker();
   resetMedia();
@@ -597,12 +604,16 @@ async function openPhrase(id: string): Promise<void> {
     const sp = library.allPhrases.find((i) => i.phrase.id === id)?.phrase;
     // Name the file after the sample so the player shows its name, keeping the original extension.
     const ext = /\.[^.]+$/.exec(sp?.sourceName ?? '')?.[0] ?? '';
-    if (sp) await loadFile(new File([sp.audio], `${sp.name}${ext}`, { type: sp.audio.type }));
+    if (!sp) return;
+    nextTranscript = sp;
+    voiceRange.set(sp.voiceRange); // trace it with the range it was meant for
+    await loadFile(new File([sp.audio], `${sp.name}${ext}`, { type: sp.audio.type }));
     return;
   }
   const p = await getPhrase(id);
   if (!p) return;
   const src = p.sourceId ? await getSource(p.sourceId) : undefined;
+  voiceRange.set(p.voiceRange); // the range the phrase was saved with
   if (src) {
     await loadFile(new File([src.blob], src.name, { type: src.type, lastModified: src.lastModified }));
     if (getStatus().kind !== 'ready') return;

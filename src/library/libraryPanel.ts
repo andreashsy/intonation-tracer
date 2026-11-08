@@ -223,7 +223,22 @@ export class LibraryPanel {
     }
     size.textContent = parts.join(' · ');
 
-    main.append(name, svg, meta, size);
+    main.append(name);
+    if (p.transcript) {
+      const said = document.createElement('p');
+      said.className = 'lib-transcript';
+      said.textContent = p.transcript;
+      if (p.lang) said.lang = p.lang;
+      main.append(said);
+      if (p.translation) {
+        const tr = document.createElement('p');
+        tr.className = 'lib-translation';
+        tr.textContent = p.translation;
+        tr.style.margin = '0';
+        main.append(tr);
+      }
+    }
+    main.append(svg, meta, size);
 
     const actions = document.createElement('div');
     actions.className = 'lib-actions';

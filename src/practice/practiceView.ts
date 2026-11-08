@@ -17,6 +17,7 @@ import { encodeWav, floatToInt16 } from '../wav.ts';
 import { VoiceRangeControls } from '../voiceRange.ts';
 import { isSampleId } from '../library/samples.ts';
 import { getUnit, onUnitChange } from '../units.ts';
+import { showTranscript } from '../transcript.ts';
 import { type Layer, PracticeChart, type Speaker } from './practiceChart.ts';
 import { AutoStop, runningMedian, speechSpan, TAKE } from './takes.ts';
 
@@ -43,6 +44,9 @@ interface Model extends Trace {
   hasVideo: boolean;
   voiceRange: VoiceRange;
   credit?: string;
+  transcript?: string;
+  translation?: string;
+  lang?: string;
   /** 16 kHz audio of just the phrase, decoded on first re-analysis. */
   pcm?: Float32Array;
   /** Audio to decode for re-analysis (saved phrase audio); unsaved models slice the clip instead. */
@@ -78,6 +82,7 @@ export interface PracticeDeps {
 export class PracticeView {
   private readonly picker = $<HTMLSelectElement>('pick-model');
   private readonly modelMeta = $<HTMLSpanElement>('model-meta');
+  private readonly modelTranscript = $<HTMLParagraphElement>('model-transcript');
   private readonly empty = $<HTMLParagraphElement>('practice-empty');
   private readonly stage = $<HTMLDivElement>('practice-stage');
   private readonly videoWrap = $<HTMLDivElement>('practice-video-wrap');
@@ -260,6 +265,7 @@ export class PracticeView {
     this.modelMeta.textContent = this.model
       ? [formatTime(this.model.duration), this.model.language, this.model.credit].filter(Boolean).join(' · ')
       : '';
+    showTranscript(this.modelTranscript, this.model);
     if (this.model) {
       this.modelUrl = URL.createObjectURL(this.model.media);
       try {
@@ -316,6 +322,9 @@ export class PracticeView {
       voiceRange: { ...p.voiceRange },
       audio: p.audio,
       credit: p.credit,
+      transcript: p.transcript,
+      translation: p.translation,
+      lang: p.lang,
     };
   }
 

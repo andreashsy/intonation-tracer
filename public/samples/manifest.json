@@ -2,10 +2,12 @@
   "samples": [
     {
       "file": "ko/leesejin-01.wav",
-      "name": "세계 인권 선언 낭독 (1)",
+      "name": "세계 인권 선언 제1조",
       "language": "ko",
       "voiceRange": "lower",
-      "credit": "Read by LeeSeJin · LibriVox (public domain)"
+      "credit": "Read by LeeSeJin · LibriVox (public domain)",
+      "transcript": "모든 인간은 태어날 때부터",
+      "translation": "All human beings, from birth…"
     }
   ]
 }

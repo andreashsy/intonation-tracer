@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isSampleId, languageLabel, parseManifest, rangeFor, sampleId } from '../src/library/samples.ts';
+import { isSampleId, languageLabel, parseManifest, isLanguageCode, rangeFor, sampleId } from '../src/library/samples.ts';
 
 describe('sample manifest', () => {
   it('keeps well-formed entries and skips the rest', () => {
@@ -25,6 +25,26 @@ describe('sample manifest', () => {
       ],
     });
     assert.deepEqual(list.map((e) => e.credit), ['Read by LeeSeJin']);
+  });
+
+  it('accepts an optional transcript and translation', () => {
+    const list = parseManifest({
+      samples: [
+        { file: 'ko/a.wav', name: 'A', language: 'ko', transcript: '세계 인권 선언', translation: 'Universal Declaration of Human Rights' },
+        { file: 'ko/b.wav', name: 'B', language: 'ko', transcript: ['not', 'text'] },
+        { file: 'ko/c.wav', name: 'C', language: 'ko' },
+      ],
+    });
+    assert.deepEqual(list.map((e) => [e.file, e.transcript, e.translation]), [
+      ['ko/a.wav', '세계 인권 선언', 'Universal Declaration of Human Rights'],
+      ['ko/c.wav', undefined, undefined],
+    ]);
+  });
+
+  it('knows a language code from a language name', () => {
+    assert.equal(isLanguageCode('ko'), true);
+    assert.equal(isLanguageCode('pt-BR'), true);
+    assert.equal(isLanguageCode('Korean'), false);
   });
 
   it('treats a missing or empty manifest as no samples', () => {

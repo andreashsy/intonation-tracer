@@ -96,6 +96,7 @@ Samples appear at the top of everyone's library, grouped by language, and can be
    ```
    `voiceRange` is optional: `any` (default), `lower`, `higher`, or `{ "minF0": 100, "maxF0": 400 }`.
    `credit` is optional text shown with the sample, e.g. `"Read by LeeSeJin · LibriVox (public domain)"`.
+   `transcript` (what is said) and `translation` are optional; they show in the library, above the player's trace and in Practice.
 3. Commit and push; the workflow deploys them.
 
 Only publish clips you have the right to share: your own recordings, ones made with the speaker's permission, or public-domain / CC0 speech.
@@ -145,7 +146,7 @@ In DevTools → Network, `pitch.worker-<hash>.js` should load with status 200 fr
 
 ## Status
 
-- Unit tests: 78 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop, Hz/semitone/note conversions and axis ticks).
+- Unit tests: 80 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop, Hz/semitone/note conversions and axis ticks).
 - Benchmark: 60 s analyzed in about 0.9 s on the build machine (budget 2 s).
 - Smoke-tested in headless Chromium with a synthetic 20 s WAV: load, unsupported file, no-speech file, play/pause via Space without double-toggle, arrow jumps, click and drag seeking, seek bar, cancel then reload, phone width, dark mode. No console errors.
 - Video tested in headless Chromium with a portrait YouTube Short, a landscape test video and an audio-only file, at desktop and phone widths: play button, seek bar, trace clicks, video click and Space all keep video and playhead in sync.

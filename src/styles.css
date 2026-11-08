@@ -561,11 +561,19 @@ button.secondary:hover {
 }
 
 .library-list {
+  /* Fill the drawer below the header and scroll. Without min-height: 0 the list never
+     scrolls, and the rows shrink to fit instead, cutting off their buttons. */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding-bottom: 16px;
+}
+
+.library-list > * {
+  flex-shrink: 0;
 }
 
 .library-empty {
@@ -575,7 +583,17 @@ button.secondary:hover {
 .lib-group {
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
+  /* No overflow: hidden here, or it clips the Download menu; round the rows instead. */
+}
+
+.lib-group > .lib-row:first-child {
+  border-top-left-radius: 11px;
+  border-top-right-radius: 11px;
+}
+
+.lib-group > .lib-row:last-child {
+  border-bottom-left-radius: 11px;
+  border-bottom-right-radius: 11px;
 }
 
 .lib-subhead {
@@ -629,6 +647,36 @@ button.secondary:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.lib-transcript {
+  margin: 2px 0 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.lib-translation,
+.transcript .translation {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.transcript {
+  margin: 0;
+  padding: 12px 16px 4px;
+  font-size: 1.2rem;
+  line-height: 1.45;
+}
+
+#clip-transcript {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.transcript .translation {
+  display: block;
+  font-size: 0.9rem;
+  margin-top: 2px;
 }
 
 .spark {

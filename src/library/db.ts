@@ -22,6 +22,11 @@ export interface Phrase {
   sourceName: string;
   /** Built-in samples only: who to credit (speaker, source). */
   credit?: string;
+  /** Built-in samples only: what is said, in the phrase's language, and an optional translation. */
+  transcript?: string;
+  translation?: string;
+  /** Language code of the transcript (e.g. "ko"), for the HTML lang attribute. */
+  lang?: string;
 }
 
 export interface Source {
