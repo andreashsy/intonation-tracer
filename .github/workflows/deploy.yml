@@ -49,6 +49,9 @@ jobs:
           if ! ls dist/assets | grep -q '^pitch\.worker.*\.js$'; then
             echo "::error::Pitch worker chunk missing from dist/assets"; exit 1
           fi
+          if [ ! -f dist/samples/manifest.json ]; then
+            echo "::error::dist/samples/manifest.json missing (public/samples wasn't copied)"; exit 1
+          fi
           if grep -Eq '(src|href)="/' dist/index.html; then
             echo "::error::index.html has root-absolute asset paths; check base in vite.config.ts"; exit 1
           fi

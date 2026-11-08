@@ -4,7 +4,8 @@ import { looksLikeMedia, setupFileInput } from './fileInput.ts';
 import { formatTime, spokenTime } from './format.ts';
 import { LivePitch } from './livePitch.ts';
 import { LiveView } from './liveView.ts';
-import { getPhrase, getSource, LibraryFull, libraryAvailable, savePhrase } from './library/db.ts';
+import { getPhrase, getSource, LibraryFull, libraryAvailable, type Phrase, savePhrase } from './library/db.ts';
+import { isSampleId, languageLabel, loadManifest, loadSample } from './library/samples.ts';
 import { phraseFromClip } from './library/phraseBuilder.ts';
 import { LibraryPanel } from './library/libraryPanel.ts';
 import { SaveDialog } from './library/saveDialog.ts';
@@ -482,7 +483,7 @@ async function saveSelection(): Promise<void> {
   const track = currentTrack;
   const pcmAll = currentPcm;
   const hasVideo = !ui.videoWrap.hidden;
-  const items = library.phrases;
+  const items = library.allPhrases; // samples too, so a take can be linked to one
   const whole = !selection;
   const defaultName = currentIsRecording
     ? `My take ${new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
@@ -562,13 +563,41 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('.axis-help-button'
 document.addEventListener('open-axis-help', openAxisHelp);
 $<HTMLButtonElement>('axis-help-close').addEventListener('click', () => axisHelp.close());
 
+let libraryOk = true;
 void libraryAvailable().then((ok) => {
+  libraryOk = ok;
   if (ok) void library.refresh();
   else library.disable("The library isn't available in this browser window (private browsing or storage blocked).");
 });
 
+// Built-in samples (M1 spec §7.1): analyzed in the background; nothing shows if there are none.
+void (async () => {
+  const entries = await loadManifest();
+  if (!entries.length) return;
+  const ready: Phrase[] = [];
+  let pending = entries.map((e) => ({ name: e.name, language: languageLabel(e.language) }));
+  library.setSamples(ready, pending);
+  if (!libraryOk) library.enableForSamples();
+  for (const e of entries) {
+    try {
+      ready.push(await loadSample(e));
+    } catch {
+      // A missing or undecodable sample is skipped.
+    }
+    pending = pending.slice(1);
+    library.setSamples([...ready], pending);
+  }
+})();
+
 async function openPhrase(id: string): Promise<void> {
   if (getStatus().kind === 'practice') closePractice();
+  if (isSampleId(id)) {
+    const sp = library.allPhrases.find((i) => i.phrase.id === id)?.phrase;
+    // Name the file after the sample so the player shows its name, keeping the original extension.
+    const ext = /\.[^.]+$/.exec(sp?.sourceName ?? '')?.[0] ?? '';
+    if (sp) await loadFile(new File([sp.audio], `${sp.name}${ext}`, { type: sp.audio.type }));
+    return;
+  }
   const p = await getPhrase(id);
   if (!p) return;
   const src = p.sourceId ? await getSource(p.sourceId) : undefined;

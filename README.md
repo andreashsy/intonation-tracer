@@ -55,6 +55,8 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
 | `src/units.ts` | Shared axis unit setting (Semitones / Hz / Notes) |
 | `src/readout.ts` | Pitch readout: hover, touch-and-hold ring, hint chip |
 | `src/download.ts` | Safe file names and saving files to the device |
+| `src/library/samples.ts` | Built-in samples: manifest, loading and analysis |
+| `public/samples/manifest.json` | List of built-in samples (empty for now) |
 | `src/main.ts` | Wiring, load/cancel flow, selection, rAF loop, global keyboard handler |
 
 ## Phrase library (M1) and Practice (M2)
@@ -77,6 +79,25 @@ a live pitch trace scrolls past with the timer running. **Stop** turns the recor
 seeking and voice range, just like an uploaded file; **Save recording** downloads it. Up to 10 minutes (5 on phones).
 Echo cancellation, noise suppression and auto gain are turned off because they distort pitch.
 Microphone access needs https (GitHub Pages is) or `localhost`.
+
+## Adding built-in samples
+
+Samples appear at the top of everyone's library, grouped by language, and can be opened, practised against and downloaded. They're read-only and never stored in the user's browser. With no samples listed, the library shows nothing about them.
+
+1. Put each clip in `public/samples/<language>/`, e.g. `public/samples/ko/question.mp3`. Use **one short phrase per file** (1–10 s, trimmed to the sentence), audio only, MP3 or M4A.
+2. List it in `public/samples/manifest.json`:
+   ```json
+   {
+     "samples": [
+       { "file": "ko/question.mp3", "name": "어디 가요? (Where are you going?)", "language": "ko", "voiceRange": "higher" },
+       { "file": "ko/statement.mp3", "name": "집에 가요. (I'm going home.)", "language": "ko" }
+     ]
+   }
+   ```
+   `voiceRange` is optional: `any` (default), `lower`, `higher`, or `{ "minF0": 100, "maxF0": 400 }`.
+3. Commit and push; the workflow deploys them.
+
+Only publish clips you have the right to share: your own recordings, ones made with the speaker's permission, or public-domain / CC0 speech.
 
 ## Reading the chart: semitones and Hz
 
@@ -116,14 +137,14 @@ The repo includes `.github/workflows/deploy.yml`, which tests, builds and publis
 or on a custom domain without changes.
 
 **Build checks:** the workflow fails before deploying if the unit tests or type check fail, if the pitch worker
-chunk is missing from `dist/assets`, or if `index.html` has root-absolute (`/…`) asset paths.
+chunk is missing from `dist/assets`, if `dist/samples/manifest.json` is missing, or if `index.html` has root-absolute (`/…`) asset paths.
 
 **Check the worker once on the live site:** open the site, load a short clip and confirm the trace appears.
 In DevTools → Network, `pitch.worker-<hash>.js` should load with status 200 from under `/<repo>/assets/`.
 
 ## Status
 
-- Unit tests: 71 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop, Hz/semitone/note conversions and axis ticks).
+- Unit tests: 75 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop, Hz/semitone/note conversions and axis ticks).
 - Benchmark: 60 s analyzed in about 0.9 s on the build machine (budget 2 s).
 - Smoke-tested in headless Chromium with a synthetic 20 s WAV: load, unsupported file, no-speech file, play/pause via Space without double-toggle, arrow jumps, click and drag seeking, seek bar, cancel then reload, phone width, dark mode. No console errors.
 - Video tested in headless Chromium with a portrait YouTube Short, a landscape test video and an audio-only file, at desktop and phone widths: play button, seek bar, trace clicks, video click and Space all keep video and playhead in sync.

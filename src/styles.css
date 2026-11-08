@@ -1356,3 +1356,29 @@ button.danger {
 .dl-item .hint {
   font-size: 0.8125rem;
 }
+
+/* Library: built-in samples */
+.lib-section {
+  font-size: 0.9375rem;
+  margin: 6px 0 0;
+}
+
+.library-list > .lib-section:first-child {
+  margin-top: 0;
+}
+
+.badge.sample {
+  color: var(--text-muted);
+}
+
+.lib-group.sample {
+  border-style: dashed;
+}
+
+.lib-row.sample-pending {
+  display: block;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  font-style: italic;
+}

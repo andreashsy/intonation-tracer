@@ -15,6 +15,7 @@ import { Player } from '../player.ts';
 import { MicRecorder, RecorderError } from '../recorder.ts';
 import { encodeWav, floatToInt16 } from '../wav.ts';
 import { VoiceRangeControls } from '../voiceRange.ts';
+import { isSampleId } from '../library/samples.ts';
 import { getUnit, onUnitChange } from '../units.ts';
 import { type Layer, PracticeChart, type Speaker } from './practiceChart.ts';
 import { AutoStop, runningMedian, speechSpan, TAKE } from './takes.ts';
@@ -227,7 +228,7 @@ export class PracticeView {
 
   private fillPicker(): void {
     const models = this.items.filter((i) => i.phrase.role === 'model').map((i) => i.phrase);
-    const opts = models.map((m) => new Option(m.name, m.id));
+    const opts = models.map((m) => new Option(isSampleId(m.id) ? `${m.name} (sample)` : m.name, m.id));
     if (this.unsaved) opts.unshift(new Option(`${this.unsaved.name} (not saved)`, UNSAVED));
     const keep = this.model?.key;
     this.picker.replaceChildren(...opts);
@@ -698,7 +699,8 @@ export class PracticeView {
         medianF0: track.medianF0,
         voiceRange: { ...range },
       });
-      if (m.key !== UNSAVED) {
+      // Built-in samples are read-only: their new trace lasts for this visit only.
+      if (m.key !== UNSAVED && !isSampleId(m.key)) {
         await updatePhrase(m.key, {
           f0: m.f0,
           hopSeconds: m.hopSeconds,

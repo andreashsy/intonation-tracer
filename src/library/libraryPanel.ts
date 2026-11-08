@@ -1,9 +1,12 @@
-// Library drawer (M1 spec §7): Models with their linked takes, other takes, sizes and actions.
+// Library drawer (M1 spec §7): built-in samples (§7.1, read-only, grouped by language,
+// absent when there are none), then the user's Models with their linked takes, other takes,
+// sizes and actions.
 
 import { formatTime } from '../format.ts';
 import { formatBytes, sparklinePath } from '../phrases.ts';
 import { downloadBlob, extensionFor, safeFileName } from '../download.ts';
 import { deletePhrase, getSource, listPhrases, type Phrase, type PhraseInfo, removeVideo, totalBytes } from './db.ts';
+import { isSampleId } from './samples.ts';
 
 export interface LibraryActions {
   open(id: string): void;
@@ -25,6 +28,9 @@ export class LibraryPanel {
   private readonly count = $<HTMLSpanElement>('library-count');
   private readonly actions: LibraryActions;
   private items: PhraseInfo[] = [];
+  /** Built-in samples, analyzed and ready; `samplesPending` are still loading. */
+  private samples: Phrase[] = [];
+  private samplesPending: { name: string; language: string }[] = [];
   private returnFocus: HTMLElement | null = null;
 
   constructor(actions: LibraryActions) {
@@ -44,13 +50,34 @@ export class LibraryPanel {
     return !this.drawer.hidden;
   }
 
+  /** The user's saved phrases (IndexedDB only). */
   get phrases(): PhraseInfo[] {
     return this.items;
+  }
+
+  /** Samples followed by the user's phrases: what Practice and the save dialog can pick from. */
+  get allPhrases(): PhraseInfo[] {
+    return [...this.samples.map((phrase) => ({ phrase, videoSize: 0, videoSharedBy: 0 })), ...this.items];
+  }
+
+  /** Updates the built-in samples (ready ones, plus ones still being prepared). */
+  setSamples(ready: Phrase[], pending: { name: string; language: string }[]): void {
+    this.samples = ready;
+    this.samplesPending = pending;
+    this.render();
+    this.actions.changed(this.allPhrases);
   }
 
   disable(reason: string): void {
     this.button.disabled = true;
     this.button.title = reason;
+  }
+
+  /** Storage is unavailable but there are samples: allow opening the library for them. */
+  enableForSamples(): void {
+    this.button.disabled = false;
+    this.button.title = '';
+    this.usage.textContent = "Your own library isn't available in this browser window, but the samples are.";
   }
 
   async open(): Promise<void> {
@@ -81,15 +108,54 @@ export class LibraryPanel {
       ? `Saved in this browser only · ${formatBytes(totalBytes(this.items))}`
       : 'Saved in this browser only.';
     this.render();
-    this.actions.changed(this.items);
+    this.actions.changed(this.allPhrases);
     return this.items;
   }
 
   private render(): void {
     const models = this.items.filter((i) => i.phrase.role === 'model');
-    const modelIds = new Set(models.map((m) => m.phrase.id));
+    const modelIds = new Set([...models.map((m) => m.phrase.id), ...this.samples.map((s) => s.id)]);
     const takes = this.items.filter((i) => i.phrase.role === 'me');
     const nodes: Node[] = [];
+
+    // ---- Samples (only when the app ships some) ----
+    if (this.samples.length || this.samplesPending.length) {
+      const h = document.createElement('h3');
+      h.className = 'lib-section';
+      h.textContent = 'Samples';
+      nodes.push(h);
+      const byLanguage = new Map<string, Node[]>();
+      const add = (language: string, node: Node) => {
+        if (!byLanguage.has(language)) byLanguage.set(language, []);
+        byLanguage.get(language)!.push(node);
+      };
+      for (const sp of this.samples) {
+        const group = document.createElement('div');
+        group.className = 'lib-group sample';
+        group.append(this.row({ phrase: sp, videoSize: 0, videoSharedBy: 0 }, false));
+        for (const t of takes.filter((t) => t.phrase.modelId === sp.id)) group.append(this.row(t, true));
+        add(sp.language ?? '', group);
+      }
+      for (const pend of this.samplesPending) {
+        const row = document.createElement('div');
+        row.className = 'lib-row sample-pending';
+        row.textContent = `${pend.name} — preparing…`;
+        add(pend.language, row);
+      }
+      for (const [language, rows] of byLanguage) {
+        if (byLanguage.size > 1 || language) {
+          const lh = document.createElement('h4');
+          lh.className = 'lib-subhead';
+          lh.textContent = language || 'Other';
+          nodes.push(lh);
+        }
+        nodes.push(...rows);
+      }
+      const mine = document.createElement('h3');
+      mine.className = 'lib-section';
+      mine.textContent = 'My library';
+      nodes.push(mine);
+    }
 
     if (!this.items.length) {
       const p = document.createElement('p');
@@ -120,12 +186,13 @@ export class LibraryPanel {
   private row(info: PhraseInfo, indented: boolean): HTMLElement {
     const p = info.phrase;
     const row = document.createElement('article');
-    row.className = `lib-row${indented ? ' take' : ''}`;
-    row.setAttribute('aria-label', `${p.role === 'model' ? 'Model' : 'Me'}: ${p.name}`);
+    const sample = isSampleId(p.id);
+    row.className = `lib-row${indented ? ' take' : ''}${sample ? ' sample' : ''}`;
+    row.setAttribute('aria-label', `${sample ? 'Sample' : p.role === 'model' ? 'Model' : 'Me'}: ${p.name}`);
 
     const badge = document.createElement('span');
-    badge.className = `badge ${p.role}`;
-    badge.textContent = p.role === 'model' ? 'Model' : 'Me';
+    badge.className = `badge ${sample ? 'sample' : p.role}`;
+    badge.textContent = sample ? 'Sample' : p.role === 'model' ? 'Model' : 'Me';
 
     const main = document.createElement('div');
     main.className = 'lib-main';
@@ -143,12 +210,12 @@ export class LibraryPanel {
 
     const meta = document.createElement('div');
     meta.className = 'lib-meta';
-    const date = new Date(p.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-    meta.textContent = [formatTime(p.duration), date, p.language].filter(Boolean).join(' · ');
+    const date = sample ? 'built in' : new Date(p.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    meta.textContent = [formatTime(p.duration), date, sample ? '' : p.language].filter(Boolean).join(' · ');
 
     const size = document.createElement('div');
     size.className = 'lib-size';
-    const parts = [`Audio ${formatBytes(p.audio.size)}`];
+    const parts = [sample ? 'Not stored in your library' : `Audio ${formatBytes(p.audio.size)}`];
     if (info.videoSize) {
       parts.push(
         `Video ${formatBytes(info.videoSize)}${info.videoSharedBy > 1 ? `, shared by ${info.videoSharedBy} phrases` : ''}`,
@@ -167,7 +234,9 @@ export class LibraryPanel {
       }),
     );
     // Practice: on Models, and on takes that are linked to a Model.
-    const linked = p.role === 'model' || (!!p.modelId && this.items.some((i) => i.phrase.id === p.modelId));
+    const linked =
+      p.role === 'model' ||
+      (!!p.modelId && (this.items.some((i) => i.phrase.id === p.modelId) || this.samples.some((s) => s.id === p.modelId)));
     if (linked) {
       actions.append(
         this.actionButton('Practice', () => {
@@ -177,6 +246,11 @@ export class LibraryPanel {
       );
     }
     actions.append(this.downloadMenu(p, info.videoSize));
+    if (sample) {
+      // Built-in samples can't be changed or removed.
+      row.append(badge, main, actions);
+      return row;
+    }
     if (info.videoSize) {
       const freed = info.videoSharedBy > 1 ? 0 : info.videoSize;
       const b = this.actionButton('Remove video', async () => {
@@ -214,7 +288,10 @@ export class LibraryPanel {
    * the original video file (the whole clip; the phrase starts at the time shown).
    */
   private downloadMenu(p: Phrase, videoSize: number): HTMLElement {
-    const audioName = `${safeFileName(p.name)}.wav`;
+    // Samples download their original file (whatever format it was shipped in).
+    const audioName = isSampleId(p.id)
+      ? `${safeFileName(p.name)}.${extensionFor(p.audio.type, p.sourceName)}`
+      : `${safeFileName(p.name)}.wav`;
     const audio = () => downloadBlob(p.audio, audioName);
     if (!videoSize) {
       const b = this.actionButton('Download', audio);
