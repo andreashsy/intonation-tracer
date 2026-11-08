@@ -1,6 +1,6 @@
 # Intonation Tracer — Milestone 0
 
-Upload an audio or video file, see its pitch trace, and play it back with a synced playhead.
+Upload an audio or video file, or record from your microphone, then see its pitch trace and play it back with a synced playhead.
 Everything runs in the browser; nothing is uploaded anywhere.
 
 Spec: *intonation-tracer-m0-upload-player-spec.md* (in the project docs).
@@ -38,7 +38,19 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
 | `src/seekBar.ts` | Slider and time labels; seeks on release |
 | `src/voiceRange.ts` | Voice range menu and Min/Max inputs, validation, remembered choice |
 | `src/fileInput.ts` | Drop zone, picker, type check |
+| `src/recorder.ts` | Microphone capture through an inlined AudioWorklet; permission error messages |
+| `src/livePitch.ts` | Streaming resample to 16 kHz + YIN for the live trace |
+| `src/liveView.ts` | Scrolling live trace while recording |
+| `src/wav.ts` | 16-bit mono WAV encoding |
 | `src/main.ts` | Wiring, load/cancel flow, rAF loop, global keyboard handler |
+
+## Recording
+
+Press **Record with microphone** (or **Record** in the top bar). While you speak, a live pitch trace scrolls past,
+with a level meter and timer. **Stop** turns the recording into a WAV and shows the full trace with playback,
+seeking and voice range, just like an uploaded file; **Save recording** downloads it. Up to 10 minutes (5 on phones).
+Echo cancellation, noise suppression and auto gain are turned off because they distort pitch.
+Microphone access needs https (GitHub Pages is) or `localhost`.
 
 ## Video
 
@@ -78,14 +90,15 @@ In DevTools → Network, `pitch.worker-<hash>.js` should load with status 200 fr
 
 ## Status
 
-- Unit tests: 33 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter).
+- Unit tests: 42 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages).
 - Benchmark: 60 s analyzed in about 0.9 s on the build machine (budget 2 s).
 - Smoke-tested in headless Chromium with a synthetic 20 s WAV: load, unsupported file, no-speech file, play/pause via Space without double-toggle, arrow jumps, click and drag seeking, seek bar, cancel then reload, phone width, dark mode. No console errors.
 - Video tested in headless Chromium with a portrait YouTube Short, a landscape test video and an audio-only file, at desktop and phone widths: play button, seek bar, trace clicks, video click and Space all keep video and playhead in sync.
+- Recording tested in headless Chromium with a fake microphone: live trace, level meter, Stop → trace and playback, Save downloads a valid WAV, Cancel, too-short recording, no microphone.
 - Voice range tested in headless Chromium on a real music-backed clip: switching presets mid-playback, custom values, invalid input, keyboard isolation, remembered setting.
 
 ## Still to do for M0 sign-off
 
 - Real speech fixtures with Praat reference pitch (`tests/fixtures/`) and the < 5% gross-error check.
 - Click-track fixture to measure `TRACE_OFFSET_SECONDS` per browser and format.
-- Manual testing in Firefox, Safari (macOS, iOS) and Chrome Android, including MOV and WebM decoding and the mobile memory limits.
+- Manual testing in Firefox, Safari (macOS, iOS) and Chrome Android, including MOV and WebM decoding, the mobile memory limits, and recording with real microphones (permission prompts, Bluetooth headsets).

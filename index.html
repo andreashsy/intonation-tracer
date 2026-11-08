@@ -10,15 +10,37 @@
     <main class="app">
       <header class="topbar">
         <h1 class="file-name" id="file-name">Intonation Tracer</h1>
-        <button type="button" id="load-another" class="secondary" hidden>Load another file</button>
+        <div class="actions" id="actions" hidden>
+          <a id="save-recording" class="button secondary" hidden>Save recording</a>
+          <button type="button" id="record-again" class="secondary">● Record</button>
+          <button type="button" id="load-another" class="secondary">Load another file</button>
+        </div>
       </header>
 
       <!-- Empty / error state -->
       <section id="drop-zone" class="drop-zone" tabindex="0" aria-describedby="drop-hint">
         <p class="drop-title">Drop an audio or video file, or <label for="file-input" class="link">choose one</label>.</p>
         <p id="drop-hint" class="hint">MP3, WAV, M4A, OGG, MP4, WebM or MOV · up to <span id="limit-text">10 minutes</span></p>
+        <p class="or" aria-hidden="true">or</p>
+        <button type="button" id="record" class="record-button">● Record with microphone</button>
         <p id="error" class="error" role="alert" hidden></p>
         <input type="file" id="file-input" accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.mp4,.webm,.mov" class="visually-hidden" />
+      </section>
+
+      <!-- Recording -->
+      <section id="recorder" class="recorder" hidden aria-label="Recording">
+        <div class="live-wrap" id="live-wrap">
+          <canvas id="live-canvas" role="img" aria-label="Live pitch trace"></canvas>
+          <p id="mic-wait" class="no-voice">Allow microphone access to start recording…</p>
+        </div>
+        <div class="controls">
+          <span class="rec-dot" aria-hidden="true"></span>
+          <span id="rec-time" class="time" aria-live="off">0:00.0</span>
+          <div class="level" aria-hidden="true"><div class="level-fill" id="level-fill"></div></div>
+          <button type="button" id="stop-recording" class="primary">■ Stop</button>
+          <button type="button" id="cancel-recording" class="secondary">Cancel</button>
+        </div>
+        <p class="hint rec-hint" id="rec-hint">Speak normally. Stopping shows the full trace with playback. Up to <span id="rec-limit">10 minutes</span>.</p>
       </section>
 
       <!-- Decoding / analyzing -->

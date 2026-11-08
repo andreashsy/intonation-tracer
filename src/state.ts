@@ -3,6 +3,7 @@
 export type Status =
   | { kind: 'empty'; error?: string }
   | { kind: 'loading'; step: 'decoding' | 'analyzing'; progress: number }
+  | { kind: 'recording'; live: boolean } // live: false while waiting for mic permission
   | { kind: 'ready' };
 
 type Listener = (status: Status) => void;

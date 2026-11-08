@@ -17,10 +17,11 @@ export function setupFileInput(zone: HTMLElement, input: HTMLInputElement, onFil
 
   zone.addEventListener('click', (e) => {
     // The "choose one" label already opens the picker; don't open it twice.
-    if ((e.target as HTMLElement).closest('label, input')) return;
+    if ((e.target as HTMLElement).closest('label, input, button')) return;
     input.click();
   });
   zone.addEventListener('keydown', (e) => {
+    if (e.target !== zone) return; // let the Record button handle its own keys
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       input.click();

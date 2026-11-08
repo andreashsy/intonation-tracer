@@ -10,6 +10,7 @@
   /* Canvas colors (read by traceView.ts). Trace and playhead are ≥ 3:1 against --surface. */
   --trace: #1f5fbf;
   --playhead: #c2410c;
+  --rec: #c62828;
   --grid: #e7e5df;
   --grid-strong: #b9b6ad;
   color-scheme: light dark;
@@ -27,6 +28,7 @@
     --error: #ff8a80;
     --trace: #6aa8ff;
     --playhead: #ff8a5c;
+    --rec: #ff6b6b;
     --grid: #2a2d31;
     --grid-strong: #4a4e55;
   }
@@ -51,6 +53,7 @@ body {
 
 .topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -76,9 +79,119 @@ button {
   cursor: pointer;
 }
 
-.topbar button {
+.topbar button,
+.topbar .button {
   flex: none;
   white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Link styled as a button (Save recording). */
+.button {
+  display: inline-block;
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 14px;
+  text-decoration: none;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Record button on the start screen */
+.or {
+  color: var(--text-muted);
+  margin: 16px 0 12px;
+}
+
+.record-button {
+  border-color: var(--rec);
+  color: var(--rec);
+  font-weight: 600;
+  padding: 8px 18px;
+}
+
+/* Recording */
+.recorder {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.live-wrap {
+  position: relative;
+  height: clamp(220px, 45vh, 420px);
+}
+
+.live-wrap canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.rec-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--rec);
+  flex: none;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot {
+    animation: none;
+  }
+}
+
+.level {
+  flex: 1;
+  min-width: 60px;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--grid);
+  overflow: hidden;
+}
+
+.level-fill {
+  height: 100%;
+  width: 0;
+  background: var(--trace);
+  transition: width 60ms linear;
+}
+
+.level-fill.hot {
+  background: var(--rec);
+}
+
+.controls button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.rec-hint {
+  padding: 0 16px 14px;
+  font-size: 0.875rem;
 }
 
 button.secondary:hover {

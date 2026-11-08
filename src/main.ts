@@ -1,13 +1,17 @@
 import { ANALYSIS, currentLimits, type VoiceRange } from './config.ts';
 import { DecodeError, decodeToMono } from './decoder.ts';
 import { looksLikeMedia, setupFileInput } from './fileInput.ts';
-import { spokenTime } from './format.ts';
+import { formatTime, spokenTime } from './format.ts';
+import { LivePitch } from './livePitch.ts';
+import { LiveView } from './liveView.ts';
 import { Player } from './player.ts';
+import { MicRecorder, RecorderError } from './recorder.ts';
 import { SeekBar } from './seekBar.ts';
 import { getStatus, setStatus, subscribe } from './state.ts';
 import { TraceView } from './traceView.ts';
 import type { PitchTrack, WorkerRequest, WorkerResponse } from './types.ts';
 import { VoiceRangeControls } from './voiceRange.ts';
+import { encodeWav } from './wav.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -37,6 +41,19 @@ const ui = {
   rangeMin: $<HTMLInputElement>('range-min'),
   rangeMax: $<HTMLInputElement>('range-max'),
   rangeStatus: $<HTMLSpanElement>('range-status'),
+  actions: $<HTMLDivElement>('actions'),
+  saveRecording: $<HTMLAnchorElement>('save-recording'),
+  recordAgain: $<HTMLButtonElement>('record-again'),
+  record: $<HTMLButtonElement>('record'),
+  recorder: $<HTMLElement>('recorder'),
+  liveWrap: $<HTMLDivElement>('live-wrap'),
+  liveCanvas: $<HTMLCanvasElement>('live-canvas'),
+  micWait: $<HTMLParagraphElement>('mic-wait'),
+  recTime: $<HTMLSpanElement>('rec-time'),
+  levelFill: $<HTMLDivElement>('level-fill'),
+  stopRecording: $<HTMLButtonElement>('stop-recording'),
+  cancelRecording: $<HTMLButtonElement>('cancel-recording'),
+  recLimit: $<HTMLSpanElement>('rec-limit'),
 };
 
 const player = new Player(ui.media);
@@ -58,6 +75,8 @@ let objectUrl: string | null = null;
 /** Decoded 16 kHz mono audio of the current file, kept so a range change can re-analyze it. */
 let currentPcm: Float32Array | null = null;
 let currentName = '';
+/** True when the loaded clip came from the microphone (offers "Save recording"). */
+let currentIsRecording = false;
 
 const voiceRange = new VoiceRangeControls(ui.rangePreset, ui.rangeMin, ui.rangeMax, ui.rangeStatus, (r) =>
   void reanalyze(r),
@@ -68,15 +87,18 @@ let pendingReject: ((err: Error) => void) | null = null;
 class Cancelled extends Error {}
 
 ui.limitText.textContent = currentLimits().label;
+ui.recLimit.textContent = currentLimits().label;
 
 setupFileInput(ui.dropZone, ui.fileInput, (file) => void loadFile(file));
 ui.loadAnother.addEventListener('click', () => ui.fileInput.click());
 ui.cancel.addEventListener('click', () => cancelLoad());
 
-async function loadFile(file: File): Promise<void> {
+async function loadFile(file: File, fromMic = false): Promise<void> {
   const token = ++loadToken;
+  stopRecorder();
   stopWorker();
   resetMedia();
+  currentIsRecording = fromMic;
 
   const limits = currentLimits();
   if (!looksLikeMedia(file)) return fail("This file's format isn't supported. Try MP3, WAV, M4A or MP4.");
@@ -176,12 +198,14 @@ function resetMedia(): void {
   if (objectUrl) URL.revokeObjectURL(objectUrl);
   objectUrl = null;
   currentPcm = null;
+  currentIsRecording = false;
   scrubTime = null;
   traceView.clear();
 }
 
 function cancelLoad(): void {
   loadToken++;
+  stopRecorder();
   stopWorker();
   resetMedia();
   ui.fileName.textContent = 'Intonation Tracer';
@@ -189,6 +213,7 @@ function cancelLoad(): void {
 }
 
 function fail(message: string): void {
+  stopRecorder();
   stopWorker();
   resetMedia();
   ui.fileName.textContent = 'Intonation Tracer';
@@ -207,6 +232,11 @@ function showTrack(name: string, track: PitchTrack, keepView = false): void {
     ui.media.setAttribute('aria-label', `Video: ${name}`);
     setStatus({ kind: 'ready' });
     seekBar.setDuration(duration);
+    ui.saveRecording.hidden = !currentIsRecording;
+    if (currentIsRecording && objectUrl) {
+      ui.saveRecording.href = objectUrl;
+      ui.saveRecording.download = name;
+    }
   }
   traceView.setTrack(track, keepView);
   ui.noVoice.hidden = !Number.isNaN(track.medianF0);
@@ -215,6 +245,89 @@ function showTrack(name: string, track: PitchTrack, keepView = false): void {
       ? 'No speech detected in this file.'
       : 'No speech detected in this voice range. Try a wider range.';
   ui.traceCanvas.setAttribute('aria-label', `Pitch trace of ${name}, ${spokenTime(duration)}`);
+}
+
+// ---- recording (spec §2.1) ----
+
+const liveView = new LiveView(ui.liveWrap, ui.liveCanvas);
+let recorder: MicRecorder | null = null;
+let levelDb = -100;
+
+ui.record.addEventListener('click', () => void startRecording());
+ui.recordAgain.addEventListener('click', () => void startRecording());
+ui.stopRecording.addEventListener('click', () => stopRecording());
+ui.cancelRecording.addEventListener('click', () => cancelLoad());
+
+async function startRecording(): Promise<void> {
+  if (recorder) return;
+  loadToken++;
+  stopWorker();
+  resetMedia();
+  ui.fileName.textContent = 'Recording';
+  ui.recTime.textContent = formatTime(0);
+  levelDb = -100;
+  liveView.reset(voiceRange.range);
+  setStatus({ kind: 'recording', live: false });
+
+  const rec = new MicRecorder();
+  recorder = rec;
+  try {
+    await rec.start(); // asks for permission the first time
+  } catch (err) {
+    if (recorder !== rec) return; // cancelled while waiting
+    recorder = null;
+    return fail(err instanceof RecorderError ? err.message : "Couldn't access the microphone.");
+  }
+  if (recorder !== rec) {
+    rec.cancel(); // cancelled while waiting
+    return;
+  }
+  const live = new LivePitch(rec.sampleRate, voiceRange.range, (f) => liveView.push(f.f0));
+  rec.onAudio = (x) => {
+    live.push(x);
+    let peak = 0;
+    for (let i = 0; i < x.length; i++) peak = Math.max(peak, Math.abs(x[i]));
+    levelDb = Math.max(levelDb, 20 * Math.log10(peak + 1e-9));
+  };
+  rec.onEnded = () => stopRecording(); // mic unplugged or permission revoked
+  setStatus({ kind: 'recording', live: true });
+  ui.stopRecording.focus();
+}
+
+/** Stops recording and loads the result through the normal file pipeline. */
+function stopRecording(): void {
+  const rec = recorder;
+  const s = getStatus();
+  if (!rec || s.kind !== 'recording' || !s.live) return;
+  recorder = null;
+  const r = rec.stop();
+  if (r.length < r.sampleRate * 0.5) return fail('That recording was too short. Speak for at least a second, then press Stop.');
+  const file = new File([encodeWav(r.chunks, r.sampleRate)], recordingName(), { type: 'audio/wav' });
+  void loadFile(file, true);
+}
+
+function stopRecorder(): void {
+  recorder?.cancel();
+  recorder = null;
+}
+
+function recordingName(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `Recording ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}.wav`;
+}
+
+function recordingFrame(): void {
+  if (!recorder) return;
+  const seconds = recorder.seconds;
+  ui.recTime.textContent = formatTime(seconds);
+  liveView.draw();
+  // Level meter: −60…0 dBFS, falling back slowly after peaks.
+  const pct = Math.max(0, Math.min(100, ((levelDb + 60) / 60) * 100));
+  ui.levelFill.style.width = `${pct}%`;
+  ui.levelFill.classList.toggle('hot', levelDb > -3);
+  levelDb -= 1.5;
+  // Stop just short of the limit so the file passes the length check.
+  if (seconds >= currentLimits().maxSeconds - 0.25) stopRecording();
 }
 
 // ---- playback ----
@@ -242,6 +355,7 @@ function frame(): void {
     traceView.drawPlayhead(t);
     seekBar.update(t);
   }
+  if (getStatus().kind === 'recording') recordingFrame();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -301,7 +415,9 @@ subscribe((s) => {
   ui.dropZone.hidden = s.kind !== 'empty';
   ui.progress.hidden = s.kind !== 'loading';
   ui.viewer.hidden = s.kind !== 'ready';
-  ui.loadAnother.hidden = s.kind !== 'ready';
+  ui.recorder.hidden = s.kind !== 'recording';
+  ui.micWait.hidden = s.kind !== 'recording' || s.live;
+  ui.actions.hidden = s.kind !== 'ready';
 
   ui.error.hidden = !(s.kind === 'empty' && s.error);
   ui.error.textContent = s.kind === 'empty' ? (s.error ?? '') : '';
