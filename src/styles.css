@@ -1033,3 +1033,63 @@ button.danger {
   padding: 0 16px;
   text-align: center;
 }
+
+/* ---------- Practice: voice ranges ---------- */
+.practice-ranges {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 16px;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.practice-ranges legend {
+  float: left; /* lets the legend sit inside the padded box like a heading */
+  width: 100%;
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.pr-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.pr-range-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 7.5rem;
+  font-weight: 600;
+}
+
+.pr-range select,
+.pr-range input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+.pr-range input {
+  width: 5.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-range input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.chip-me {
+  border-top: 3px dashed var(--trace-b);
+}
+
+.practice-ranges .range-help {
+  margin: 0;
+}

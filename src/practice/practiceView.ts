@@ -3,10 +3,10 @@
 // Takes live for the session; ★ saves one to the library as a Me phrase linked to the model.
 
 import { analyzeOnce } from '../analysisClient.ts';
-import { ANALYSIS, RANGE_PRESETS, type VoiceRange } from '../config.ts';
+import { ANALYSIS, type VoiceRange } from '../config.ts';
 import { decodeToMono } from '../decoder.ts';
 import { formatTime } from '../format.ts';
-import { deletePhrase, getSource, LibraryFull, type Phrase, type PhraseInfo, savePhrase } from '../library/db.ts';
+import { deletePhrase, getSource, LibraryFull, type Phrase, type PhraseInfo, savePhrase, updatePhrase } from '../library/db.ts';
 import { newId, phraseFromClip } from '../library/phraseBuilder.ts';
 import type { SaveDialog } from '../library/saveDialog.ts';
 import { LivePitch } from '../livePitch.ts';
@@ -14,12 +14,13 @@ import { firstVoicedTime, slicePcm, sliceTrace, type Span, sparklinePath, type T
 import { Player } from '../player.ts';
 import { MicRecorder, RecorderError } from '../recorder.ts';
 import { encodeWav, floatToInt16 } from '../wav.ts';
+import { VoiceRangeControls } from '../voiceRange.ts';
 import { type Layer, PracticeChart } from './practiceChart.ts';
 import { AutoStop, runningMedian, speechSpan, TAKE } from './takes.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const ANY_VOICE: VoiceRange = { minF0: RANGE_PRESETS.any.minF0, maxF0: RANGE_PRESETS.any.maxF0 };
+const MY_RANGE_KEY = 'intonation-tracer.myVoiceRange';
 const GAP_MS = 400;
 const UNSAVED = 'unsaved';
 
@@ -38,6 +39,11 @@ interface Model extends Trace {
   media: Blob;
   mediaStart: number;
   hasVideo: boolean;
+  voiceRange: VoiceRange;
+  /** 16 kHz audio of just the phrase, decoded on first re-analysis. */
+  pcm?: Float32Array;
+  /** Audio to decode for re-analysis (saved phrase audio); unsaved models slice the clip instead. */
+  audio?: Blob;
 }
 
 /** A clip selection to practice before it's saved (from the player). */
@@ -55,6 +61,7 @@ interface Take extends Trace {
   audio: Blob; // 16 kHz WAV
   savedId?: string;
   shift: number; // seconds; positive = later
+  pcm?: Float32Array; // decoded on first re-analysis
 }
 
 type Phase = 'idle' | 'arming' | 'listening' | 'countin' | 'recording' | 'analyzing';
@@ -87,6 +94,10 @@ export class PracticeView {
   private readonly modelPlayer = new Player(this.modelEl);
   private readonly takePlayer = new Player($<HTMLAudioElement>('practice-take-media'));
   private readonly deps: PracticeDeps;
+  private readonly modelRange: VoiceRangeControls;
+  private readonly myRange: VoiceRangeControls;
+  /** Bumped on every re-analysis request so stale results are dropped. */
+  private rangeSeq = 0;
 
   private items: PhraseInfo[] = [];
   private unsaved: UnsavedModel | null = null;
@@ -108,6 +119,24 @@ export class PracticeView {
 
   constructor(deps: PracticeDeps) {
     this.deps = deps;
+    // The model's range starts at what it was traced with; it isn't remembered globally.
+    this.modelRange = new VoiceRangeControls(
+      $<HTMLSelectElement>('pr-model-preset'),
+      $<HTMLInputElement>('pr-model-min'),
+      $<HTMLInputElement>('pr-model-max'),
+      $<HTMLSpanElement>('pr-model-status'),
+      (r) => void this.reanalyzeModel(r),
+      null,
+    );
+    // The user's own range is remembered: their voice doesn't change between models.
+    this.myRange = new VoiceRangeControls(
+      $<HTMLSelectElement>('pr-me-preset'),
+      $<HTMLInputElement>('pr-me-min'),
+      $<HTMLInputElement>('pr-me-max'),
+      $<HTMLSpanElement>('pr-me-status'),
+      (r) => void this.reanalyzeTakes(r),
+      MY_RANGE_KEY,
+    );
     this.picker.addEventListener('change', () => void this.selectModel(this.picker.value));
     this.tryBtn.addEventListener('click', () => this.tryAgain());
     this.playModelBtn.addEventListener('click', () => this.togglePlay('model', false));
@@ -195,6 +224,8 @@ export class PracticeView {
     this.takes = this.model ? this.loadTakes(this.model) : [];
     this.current = this.takes.length - 1;
     this.status.textContent = '';
+    this.rangeSeq++; // drop any re-analysis still running for the previous model
+    if (this.model) this.modelRange.set(this.model.voiceRange);
     this.modelMeta.textContent = this.model
       ? [formatTime(this.model.duration), this.model.language].filter(Boolean).join(' · ')
       : '';
@@ -231,6 +262,8 @@ export class PracticeView {
       media: u.file,
       mediaStart: u.span.start,
       hasVideo: u.hasVideo,
+      voiceRange: { ...u.voiceRange },
+      pcm: slicePcm(u.pcm, ANALYSIS.sampleRate, u.span),
     };
   }
 
@@ -249,6 +282,8 @@ export class PracticeView {
       media: src?.blob ?? p.audio,
       mediaStart: src ? p.sourceStart : 0,
       hasVideo: !!src && src.type.startsWith('video/'),
+      voiceRange: { ...p.voiceRange },
+      audio: p.audio,
     };
   }
 
@@ -329,7 +364,7 @@ export class PracticeView {
     const auto = new AutoStop(this.model.duration);
     const live = { f0: new Float32Array(100 * 60), count: 0, firstVoiced: -1, median: NaN, auto };
     this.live = live;
-    const pitch = new LivePitch(rec.sampleRate, ANY_VOICE, (f) => {
+    const pitch = new LivePitch(rec.sampleRate, this.myRange.range, (f) => {
       if (live.count >= live.f0.length) return;
       const i = live.count++;
       live.f0[i] = f.f0;
@@ -364,7 +399,7 @@ export class PracticeView {
     try {
       const wav = new File([encodeWav(r.chunks, r.sampleRate)], 'take.wav', { type: 'audio/wav' });
       const pcm = await decodeToMono(wav, ANALYSIS.sampleRate);
-      const track = await analyzeOnce(pcm, ANY_VOICE);
+      const track = await analyzeOnce(pcm, this.myRange.range);
       const span = speechSpan(track);
       if (!span) {
         this.status.textContent = "Didn't catch any speech. Try again a little louder.";
@@ -373,6 +408,7 @@ export class PracticeView {
       const t = sliceTrace(track, span);
       const audio = slicePcm(pcm, ANALYSIS.sampleRate, span);
       const take: Take = {
+        pcm: audio,
         f0: t.f0,
         hopSeconds: track.hopSeconds,
         frameCenterOffset: t.frameCenterOffset,
@@ -456,7 +492,6 @@ export class PracticeView {
       analyzing: 'Analyzing…',
     };
     this.tryBtn.textContent = labels[p];
-    this.tryBtn.disabled = p === 'analyzing';
     this.syncButtons();
   }
 
@@ -538,7 +573,7 @@ export class PracticeView {
           hopSeconds: take.hopSeconds,
           frameCenterOffset: take.frameCenterOffset,
           medianF0: take.medianF0,
-          voiceRange: { ...ANY_VOICE },
+          voiceRange: { ...this.myRange.range },
           sourceStart: 0,
           sourceName: 'Practice take',
         };
@@ -578,8 +613,15 @@ export class PracticeView {
         u.track,
         u.pcm,
         u.span,
-        u.voiceRange,
+        m.voiceRange,
       );
+      // If the model's range was changed in Practice, save the trace that's on screen.
+      Object.assign(phrase, {
+        f0: m.f0,
+        hopSeconds: m.hopSeconds,
+        frameCenterOffset: m.frameCenterOffset,
+        medianF0: m.medianF0,
+      });
       try {
         await savePhrase(phrase, answer.keepVideo ? u.file : undefined);
         this.deps.saveDialog.close();
@@ -604,6 +646,99 @@ export class PracticeView {
       }
     }
     return null;
+  }
+
+  // ---- voice ranges ----
+
+  /** Re-traces the model with a new range; saved models are updated in the library. */
+  private async reanalyzeModel(range: VoiceRange): Promise<void> {
+    const m = this.model;
+    if (!m) return;
+    const seq = ++this.rangeSeq;
+    this.modelRange.setBusy(true);
+    this.setRangeBusy(true);
+    try {
+      m.pcm ??= m.audio ? await decodeToMono(new File([m.audio], 'model.wav', { type: 'audio/wav' }), ANALYSIS.sampleRate) : undefined;
+      if (!m.pcm) return;
+      const track = await analyzeOnce(m.pcm, range);
+      if (seq !== this.rangeSeq || this.model !== m) return;
+      Object.assign(m, {
+        f0: track.f0,
+        hopSeconds: track.hopSeconds,
+        frameCenterOffset: track.frameCenterOffset,
+        medianF0: track.medianF0,
+        voiceRange: { ...range },
+      });
+      if (m.key !== UNSAVED) {
+        await updatePhrase(m.key, {
+          f0: m.f0,
+          hopSeconds: m.hopSeconds,
+          frameCenterOffset: m.frameCenterOffset,
+          medianF0: m.medianF0,
+          voiceRange: { ...range },
+        });
+        this.items = await this.deps.refreshLibrary();
+      }
+      this.redraw();
+      this.status.textContent = Number.isNaN(m.medianF0) ? 'No speech found in the model with this range. Try a wider one.' : '';
+    } catch {
+      this.status.textContent = "Couldn't re-trace the model.";
+    } finally {
+      if (seq === this.rangeSeq) {
+        this.modelRange.setBusy(false);
+        this.setRangeBusy(false);
+      }
+    }
+  }
+
+  /** Re-traces every take in the strip with the user's new range (saved takes are updated too). */
+  private async reanalyzeTakes(range: VoiceRange): Promise<void> {
+    if (!this.takes.length) return;
+    const seq = ++this.rangeSeq;
+    const takes = [...this.takes];
+    this.myRange.setBusy(true);
+    this.setRangeBusy(true);
+    let changedLibrary = false;
+    try {
+      for (const t of takes) {
+        t.pcm ??= await decodeToMono(new File([t.audio], 'take.wav', { type: 'audio/wav' }), ANALYSIS.sampleRate);
+        const track = await analyzeOnce(t.pcm, range);
+        if (seq !== this.rangeSeq) return;
+        Object.assign(t, {
+          f0: track.f0,
+          hopSeconds: track.hopSeconds,
+          frameCenterOffset: track.frameCenterOffset,
+          medianF0: track.medianF0,
+        });
+        if (t.savedId) {
+          await updatePhrase(t.savedId, {
+            f0: t.f0,
+            hopSeconds: t.hopSeconds,
+            frameCenterOffset: t.frameCenterOffset,
+            medianF0: t.medianF0,
+            voiceRange: { ...range },
+          });
+          changedLibrary = true;
+        }
+      }
+      if (changedLibrary) this.items = await this.deps.refreshLibrary();
+      this.renderStrip();
+      this.redraw();
+    } catch {
+      this.status.textContent = "Couldn't re-trace your takes.";
+    } finally {
+      if (seq === this.rangeSeq) {
+        this.myRange.setBusy(false);
+        this.setRangeBusy(false);
+      }
+    }
+  }
+
+  /** While re-tracing, recording and playback wait. */
+  private rangeBusy = false;
+  private setRangeBusy(busy: boolean): void {
+    this.rangeBusy = busy;
+    this.syncButtons();
   }
 
   // ---- chart ----
@@ -736,6 +871,10 @@ export class PracticeView {
     set(this.playBothBtn, seq, '▶ Model → Me', idle && !!this.model && hasTake);
     this.speed.disabled = !idle;
     this.picker.disabled = !idle || !this.picker.options.length;
+    this.tryBtn.disabled = this.phase === 'analyzing' || (idle && (this.rangeBusy || !this.model));
+    // Ranges can't change mid-try (the live line and take analysis use them).
+    this.modelRange.setDisabled(!idle || !this.model);
+    this.myRange.setDisabled(!idle);
   }
 
   // ---- keyboard (M2 spec §9) ----

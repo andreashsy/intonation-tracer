@@ -1,10 +1,11 @@
 // Voice range controls: a preset menu plus Min/Max Hz inputs.
 // Picking a preset fills the inputs; editing an input switches the menu to Custom.
-// The choice is remembered in this browser (best effort).
+// The choice can be remembered in this browser (best effort) under a storage key; several
+// independent instances can exist (the player's, and Practice's model and "my voice" ranges).
 
 import { RANGE_LIMITS, RANGE_PRESETS, type RangePresetId, type VoiceRange, validateRange } from './config.ts';
 
-const STORAGE_KEY = 'intonation-tracer.voiceRange';
+const DEFAULT_KEY = 'intonation-tracer.voiceRange';
 
 interface Saved {
   preset: RangePresetId;
@@ -17,16 +18,20 @@ export class VoiceRangeControls {
   private readonly max: HTMLInputElement;
   private readonly status: HTMLElement;
   private readonly onChange: (range: VoiceRange) => void;
+  private readonly storageKey: string | null;
   private applied: VoiceRange;
 
+  /** storageKey: where to remember the choice; null = don't remember (set from outside instead). */
   constructor(
     preset: HTMLSelectElement,
     min: HTMLInputElement,
     max: HTMLInputElement,
     status: HTMLElement,
     onChange: (range: VoiceRange) => void,
+    storageKey: string | null = DEFAULT_KEY,
   ) {
     this.onChange = onChange;
+    this.storageKey = storageKey;
     this.preset = preset;
     this.min = min;
     this.max = max;
@@ -42,7 +47,7 @@ export class VoiceRangeControls {
       new Option('Custom', 'custom'),
     );
 
-    const saved = load();
+    const saved = load(storageKey);
     this.applied = saved.range;
     preset.value = saved.preset;
     this.showRange(saved.range);
@@ -74,6 +79,19 @@ export class VoiceRangeControls {
     return this.applied;
   }
 
+  /** Shows a range without triggering onChange (e.g. the range a saved model was traced with). */
+  set(r: VoiceRange): void {
+    this.applied = { minF0: r.minF0, maxF0: r.maxF0 };
+    const match = Object.entries(RANGE_PRESETS).find(([, p]) => p.minF0 === r.minF0 && p.maxF0 === r.maxF0);
+    this.preset.value = match ? match[0] : 'custom';
+    this.showRange(r);
+    this.setStatus('', false);
+  }
+
+  setDisabled(disabled: boolean): void {
+    for (const el of [this.preset, this.min, this.max]) el.disabled = disabled;
+  }
+
   setBusy(busy: boolean): void {
     if (busy) this.setStatus('Re-analyzing…', false);
     else if (this.status.dataset.kind !== 'error') this.setStatus('', false);
@@ -100,7 +118,7 @@ export class VoiceRangeControls {
     this.max.setAttribute('aria-invalid', 'false');
     if (r.minF0 === this.applied.minF0 && r.maxF0 === this.applied.maxF0) return;
     this.applied = { minF0: r.minF0, maxF0: r.maxF0 };
-    save({ preset: this.preset.value as RangePresetId, range: this.applied });
+    if (this.storageKey) save(this.storageKey, { preset: this.preset.value as RangePresetId, range: this.applied });
     this.onChange(this.applied);
   }
 
@@ -115,10 +133,11 @@ export class VoiceRangeControls {
   }
 }
 
-function load(): Saved {
+function load(key: string | null): Saved {
   const fallback: Saved = { preset: 'any', range: { minF0: RANGE_PRESETS.any.minF0, maxF0: RANGE_PRESETS.any.maxF0 } };
+  if (!key) return fallback;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return fallback;
     const s = JSON.parse(raw) as Saved;
     if (!s?.range || validateRange(s.range)) return fallback;
@@ -129,9 +148,9 @@ function load(): Saved {
   }
 }
 
-function save(s: Saved): void {
+function save(key: string, s: Saved): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    localStorage.setItem(key, JSON.stringify(s));
   } catch {
     // Storage unavailable (private mode, blocked): the setting just isn't remembered.
   }

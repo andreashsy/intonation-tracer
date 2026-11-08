@@ -62,6 +62,7 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
   - Each line is measured from its own speaker's typical pitch, so a low and a high voice line up by shape.
   - **▶ Model** (at 1×, 0.75× or 0.5×, pitch preserved), **▶ My take**, **▶ Model → Me**. Drag the chart to shift your take.
   - Takes are kept for the session; **★** saves one to the library (linked to its Model). If the model isn't saved yet, you're asked to save it first.
+  - **Voice ranges:** one for the **Model** (starts at the range it was saved with; changing it re-traces the model and updates it in the library) and one for **My voice** (remembered; re-traces your takes and is used for the live line). Narrow the model's to ignore music in the clip, and set yours to your own voice.
   - Keys: **R** try again / stop · **M** model · **Space** my take · **1–9** pick a take · **Esc** cancel.
 
 ## Recording

@@ -159,6 +159,16 @@ export async function getSource(id: string): Promise<Source | undefined> {
   return (await req(db.transaction('sources').objectStore('sources').get(id))) as Source | undefined;
 }
 
+/** Updates fields of a saved phrase (e.g. its trace after re-analysis with a new voice range). */
+export async function updatePhrase(id: string, patch: Partial<Omit<Phrase, 'id'>>): Promise<void> {
+  const db = await open();
+  const tx = db.transaction('phrases', 'readwrite');
+  const store = tx.objectStore('phrases');
+  const p = (await req(store.get(id))) as Phrase | undefined;
+  if (p) store.put({ ...p, ...patch });
+  await done(tx);
+}
+
 /** Total bytes the library stores: phrase audio plus each source once. */
 export function totalBytes(items: PhraseInfo[]): number {
   let total = 0;

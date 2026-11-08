@@ -138,6 +138,32 @@
           <button type="button" id="shift-reset" class="link-button" hidden>Reset</button>
           <span id="practice-status" class="practice-status" role="status"></span>
         </p>
+        <fieldset class="practice-ranges" aria-describedby="pr-range-help">
+          <legend class="settings-label">Voice ranges</legend>
+          <div class="pr-range">
+            <label for="pr-model-preset" class="pr-range-label"><span class="chip chip-a" aria-hidden="true"></span>Model</label>
+            <select id="pr-model-preset"></select>
+            <span class="range-inputs">
+              <label>Min <input type="number" id="pr-model-min" inputmode="numeric" /> Hz</label>
+              <span aria-hidden="true">–</span>
+              <label>Max <input type="number" id="pr-model-max" inputmode="numeric" /> Hz</label>
+            </span>
+            <span id="pr-model-status" class="range-status" role="status"></span>
+          </div>
+          <div class="pr-range">
+            <label for="pr-me-preset" class="pr-range-label"><span class="chip chip-me" aria-hidden="true"></span>My voice</label>
+            <select id="pr-me-preset"></select>
+            <span class="range-inputs">
+              <label>Min <input type="number" id="pr-me-min" inputmode="numeric" /> Hz</label>
+              <span aria-hidden="true">–</span>
+              <label>Max <input type="number" id="pr-me-max" inputmode="numeric" /> Hz</label>
+            </span>
+            <span id="pr-me-status" class="range-status" role="status"></span>
+          </div>
+          <p id="pr-range-help" class="hint range-help">
+            Each voice is traced only inside its own range. Narrow the model's range to ignore music or other voices in the clip; set yours to your own voice.
+          </p>
+        </fieldset>
         <p class="hint practice-keys">Keys: R try again / stop · M model · Space my take · 1–9 pick a take · Esc cancel</p>
       </section>
     </main>
