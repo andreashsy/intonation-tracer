@@ -46,16 +46,23 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
 | `src/library/db.ts` | IndexedDB library: phrases plus shared video sources, sizes, cleanup |
 | `src/library/saveDialog.ts` | Save phrase dialog |
 | `src/library/libraryPanel.ts` | Library drawer |
-| `src/compare/compareChart.ts` | Overlay chart with drag-to-shift |
-| `src/compare/compareView.ts` | Compare screen: pickers, alignment, A/B playback, model video |
+| `src/library/phraseBuilder.ts` | Builds a library phrase from part of a clip |
+| `src/practice/takes.ts` | Trimming takes to speech, auto-stop, running median |
+| `src/practice/practiceChart.ts` | Layered chart: model, take, previous-take ghost, live line |
+| `src/practice/practiceView.ts` | Practice screen: the try-again loop, take strip, starring, playback, keys |
+| `src/analysisClient.ts` | One-off analysis in its own worker (for takes) |
 | `src/main.ts` | Wiring, load/cancel flow, selection, rAF loop, global keyboard handler |
 
-## Phrase library and compare (M1)
+## Phrase library (M1) and Practice (M2)
 
 - **Select a phrase:** press **✂ Select phrase**, then click a phrase on the trace (phrases are detected at pauses) or drag across any part (up to 30 s). Drag the edges to adjust. **Play phrase** plays just that part.
 - **Save it:** **Save phrase…** asks for a name, whether it's a **Model** (someone to sound like) or **Me**, an optional language, which Model a Me take goes with, and whether to keep the video (with its size). Short clips can be saved whole.
 - **Library:** the **Library** button lists Models with their takes underneath, with trace previews, sizes and the total. **Remove video** keeps the audio and trace; **Delete** asks once. Everything stays in this browser only.
-- **Compare:** puts a Model (solid line) and your take (dashed) on one chart, each relative to its own typical pitch so different voices line up by shape. Align at the first sound or use raw timing, drag the chart to shift your take, and play A, B or A then B.
+- **Practice:** open it with **Practice** on a Model in the library, or **🎙 Practice this phrase** straight from a selection. Press **● Try again**: the model plays, a 3-2-1 count-in follows, then you speak and your line draws live over the faded model. Recording stops by itself about a second after you finish, and your take (dashed) appears over the model (solid), lined up at the first sound, with your previous take as a faint ghost.
+  - Each line is measured from its own speaker's typical pitch, so a low and a high voice line up by shape.
+  - **▶ Model** (at 1×, 0.75× or 0.5×, pitch preserved), **▶ My take**, **▶ Model → Me**. Drag the chart to shift your take.
+  - Takes are kept for the session; **★** saves one to the library (linked to its Model). If the model isn't saved yet, you're asked to save it first.
+  - Keys: **R** try again / stop · **M** model · **Space** my take · **1–9** pick a take · **Esc** cancel.
 
 ## Recording
 
@@ -103,12 +110,13 @@ In DevTools → Network, `pitch.worker-<hash>.js` should load with status 200 fr
 
 ## Status
 
-- Unit tests: 53 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing).
+- Unit tests: 61 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop).
 - Benchmark: 60 s analyzed in about 0.9 s on the build machine (budget 2 s).
 - Smoke-tested in headless Chromium with a synthetic 20 s WAV: load, unsupported file, no-speech file, play/pause via Space without double-toggle, arrow jumps, click and drag seeking, seek bar, cancel then reload, phone width, dark mode. No console errors.
 - Video tested in headless Chromium with a portrait YouTube Short, a landscape test video and an audio-only file, at desktop and phone widths: play button, seek bar, trace clicks, video click and Space all keep video and playhead in sync.
 - Recording tested in headless Chromium with a fake microphone: live trace, level meter, Stop → trace and playback, Save downloads a valid WAV, Cancel, too-short recording, no microphone.
-- Library and compare tested in headless Chromium: select, save (one video shared by two phrases), record and link a take, library sizes, compare playback and shifting, remove video, delete, reload.
+- Library tested in headless Chromium: select, save (one video shared by two phrases), record and link a take, library sizes, remove video, delete, reload.
+- Practice tested in headless Chromium with a fake microphone: full try-again loop with auto-stop, live line, playback at 0.75×, shifting, starring an unsaved model's take, un-starring, keys, library entry points, reload.
 - Voice range tested in headless Chromium on a real music-backed clip: switching presets mid-playback, custom values, invalid input, keyboard isolation, remembered setting.
 
 ## Still to do for M0 sign-off

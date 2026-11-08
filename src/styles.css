@@ -538,7 +538,7 @@ button.secondary:hover {
 }
 
 .drawer-head h2,
-.compare-head h2,
+.panel-head h2,
 .save-dialog h2 {
   font-size: 1.1rem;
   margin: 0;
@@ -699,7 +699,7 @@ button.danger {
 
 .field input:not([type='checkbox']):not([type='radio']),
 .field select,
-.compare-pickers select {
+.panel-pickers select {
   font: inherit;
   font-weight: 400;
   color: var(--text);
@@ -738,15 +738,15 @@ button.danger {
   gap: 8px;
 }
 
-/* ---------- M1: compare ---------- */
-.compare {
+/* ---------- Panels (Practice) ---------- */
+.panel {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
   overflow: hidden;
 }
 
-.compare-head {
+.panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -754,7 +754,7 @@ button.danger {
   border-bottom: 1px solid var(--border);
 }
 
-.compare-pickers {
+.panel-pickers {
   display: flex;
   flex-wrap: wrap;
   gap: 8px 16px;
@@ -786,36 +786,6 @@ button.danger {
   flex: none;
 }
 
-.chip-b {
-  border-top: 3px dashed var(--trace-b);
-}
-
-.compare-options {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  padding: 10px 16px 12px;
-}
-
-.segmented {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.segmented button {
-  border: 0;
-  border-radius: 0;
-  padding: 4px 12px;
-}
-
-.segmented button[aria-checked='true'] {
-  background: var(--accent);
-  color: var(--accent-text);
-}
-
 .link-button {
   border: 0;
   background: none;
@@ -824,22 +794,22 @@ button.danger {
   padding: 0;
 }
 
-.compare-empty {
+.panel-empty {
   margin: 0;
   padding: 0 16px 12px;
   color: var(--text-muted);
 }
 
-.compare-stage {
+.panel-stage {
   border-top: 1px solid var(--border);
 }
 
-#compare-canvas {
+#practice-canvas {
   cursor: ew-resize;
   touch-action: pan-y;
 }
 
-.compare .controls button {
+.practice-controls button {
   white-space: nowrap;
 }
 
@@ -861,4 +831,188 @@ button.danger {
 
 .field .hint {
   font-weight: 400;
+}
+
+/* ---------- M2: practice ---------- */
+.practice-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.practice-play {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.speed select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.try-button {
+  min-width: 11rem;
+  min-height: 52px;
+  border-radius: 999px;
+  border: 2px solid var(--rec);
+  background: var(--rec);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+.try-button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--rec);
+}
+
+.try-button.recording {
+  background: var(--rec);
+  color: #fff;
+  animation: rec-glow 1.2s ease-out infinite;
+}
+
+@keyframes rec-glow {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--rec) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 12px color-mix(in srgb, var(--rec) 0%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .try-button.recording {
+    animation: none;
+  }
+}
+
+.takes-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 0 16px 10px;
+}
+
+.take-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.take-chip {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.take-chip.current {
+  border-color: var(--trace-b);
+  box-shadow: 0 0 0 1px var(--trace-b);
+}
+
+.take-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 0;
+  padding: 4px 8px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.take-pick .spark {
+  width: 64px;
+  height: 20px;
+  margin: 0;
+}
+
+.take-star {
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  padding: 4px 8px;
+  color: var(--text-muted);
+}
+
+.take-star.on {
+  color: #d99a00;
+}
+
+.ghost-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.practice-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0 16px 6px;
+  min-height: 1.5em;
+}
+
+.practice-status {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.practice-keys {
+  margin: 0;
+  padding: 0 16px 12px;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 720px) {
+  .practice-controls {
+    flex-direction: column; /* playback row, then the big Try again button at the bottom */
+    align-items: stretch;
+  }
+  .try-button {
+    width: 100%;
+    min-height: 60px;
+    font-size: 1.15rem;
+  }
+  .practice-play {
+    justify-content: center;
+  }
+  .practice-status {
+    margin-left: 0;
+  }
+  .practice-keys {
+    display: none;
+  }
 }

@@ -42,6 +42,11 @@ export class MicRecorder {
   onAudio: (samples: Float32Array) => void = () => {};
   /** The microphone went away (unplugged, permission revoked). */
   onEnded: () => void = () => {};
+  /**
+   * When false, the mic stays open but audio is discarded (Practice opens the mic before
+   * playing the model, so the model's sound can't leak into the take).
+   */
+  capturing = true;
 
   get sampleRate(): number {
     return this.ctx?.sampleRate ?? 0;
@@ -80,6 +85,7 @@ export class MicRecorder {
       const source = ctx.createMediaStreamSource(this.stream);
       const node = new AudioWorkletNode(ctx, 'mic-tap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
       node.port.onmessage = (e: MessageEvent<Float32Array>) => {
+        if (!this.capturing) return;
         const samples = e.data;
         this.chunks.push(floatToInt16(samples));
         this.length += samples.length;

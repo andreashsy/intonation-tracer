@@ -75,6 +75,7 @@
           <span id="selection-label" class="selection-label" aria-live="polite"></span>
           <button type="button" id="play-phrase" class="secondary">▶ Play phrase</button>
           <button type="button" id="save-phrase" class="primary">Save phrase…</button>
+          <button type="button" id="practice-phrase" class="secondary">🎙 Practice this phrase</button>
           <button type="button" id="clear-selection" class="secondary" aria-label="Clear selection">Clear</button>
           <span id="selection-hint" class="hint"></span>
         </div>
@@ -94,43 +95,49 @@
         </fieldset>
       </section>
 
-      <!-- Compare (M1) -->
-      <section id="compare" class="compare" hidden aria-labelledby="compare-title">
-        <div class="compare-head">
-          <h2 id="compare-title">Compare</h2>
-          <button type="button" id="close-compare" class="secondary">✕ Close</button>
+      <!-- Practice (M2) -->
+      <section id="practice" class="panel practice" hidden aria-labelledby="practice-title">
+        <div class="panel-head">
+          <h2 id="practice-title">Practice</h2>
+          <button type="button" id="close-practice" class="secondary">✕ Close</button>
         </div>
-        <div class="compare-pickers">
-          <label class="picker"><span class="chip chip-a" aria-hidden="true"></span><span class="picker-label">A · Model</span>
-            <select id="pick-a"></select></label>
-          <label class="picker"><span class="chip chip-b" aria-hidden="true"></span><span class="picker-label">B · Me</span>
-            <select id="pick-b"></select></label>
+        <div class="panel-pickers">
+          <label class="picker"><span class="chip chip-a" aria-hidden="true"></span><span class="picker-label">Model</span>
+            <select id="pick-model"></select></label>
+          <span id="model-meta" class="hint"></span>
         </div>
-        <div class="compare-options">
-          <span class="settings-label" id="align-label">Align</span>
-          <div class="segmented" role="radiogroup" aria-labelledby="align-label">
-            <button type="button" role="radio" id="align-off" aria-checked="false">Off</button>
-            <button type="button" role="radio" id="align-start" aria-checked="true">Start</button>
+        <p id="practice-empty" class="panel-empty" hidden></p>
+        <div class="stage panel-stage" id="practice-stage">
+          <div class="video-wrap" id="practice-video-wrap" hidden>
+            <video id="practice-media" preload="auto" playsinline webkit-playsinline></video>
           </div>
-          <span id="nudge-label" class="hint">Drag the chart sideways to shift B.</span>
-          <button type="button" id="nudge-reset" class="link-button" hidden>Reset</button>
-        </div>
-        <p id="compare-empty" class="compare-empty" hidden></p>
-        <div class="stage compare-stage" id="compare-stage">
-          <div class="video-wrap" id="compare-video-wrap" hidden>
-            <video id="compare-media-a" preload="auto" playsinline webkit-playsinline></video>
-          </div>
-          <div class="trace-wrap" id="compare-wrap">
-            <canvas id="compare-canvas" role="img" aria-label="Model and your pitch traces overlaid"></canvas>
+          <div class="trace-wrap" id="practice-wrap">
+            <canvas id="practice-canvas" role="img" aria-label="The model's pitch trace with your takes overlaid"></canvas>
+            <p id="practice-message" class="no-voice" hidden></p>
           </div>
         </div>
-        <audio id="compare-media-b" preload="auto"></audio>
-        <div class="controls">
-          <button type="button" id="play-a" class="secondary">▶ A</button>
-          <button type="button" id="play-b" class="secondary">▶ B</button>
-          <button type="button" id="play-ab" class="primary">▶ A then B</button>
-          <span id="compare-time" class="time">0:00.0</span>
+        <audio id="practice-take-media" preload="auto"></audio>
+        <div class="practice-controls">
+          <div class="practice-play">
+            <button type="button" id="play-model" class="secondary">▶ Model</button>
+            <label class="speed">Speed
+              <select id="model-speed"><option value="1">1×</option><option value="0.75">0.75×</option><option value="0.5">0.5×</option></select></label>
+            <button type="button" id="play-take" class="secondary">▶ My take</button>
+            <button type="button" id="play-model-me" class="secondary">▶ Model → Me</button>
+          </div>
+          <button type="button" id="try-again" class="try-button" aria-pressed="false" title="Plays the model, counts you in, then records you (R)">● Try again</button>
         </div>
+        <div class="takes-row">
+          <span class="settings-label">Takes</span>
+          <div id="take-strip" class="take-strip" role="list" aria-label="Takes"></div>
+          <label class="ghost-toggle"><input type="checkbox" id="show-ghost" checked /> Show previous take</label>
+        </div>
+        <p class="practice-foot">
+          <span id="shift-label" class="hint"></span>
+          <button type="button" id="shift-reset" class="link-button" hidden>Reset</button>
+          <span id="practice-status" class="practice-status" role="status"></span>
+        </p>
+        <p class="hint practice-keys">Keys: R try again / stop · M model · Space my take · 1–9 pick a take · Esc cancel</p>
       </section>
     </main>
 

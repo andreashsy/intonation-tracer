@@ -5,7 +5,7 @@ export type Status =
   | { kind: 'loading'; step: 'decoding' | 'analyzing'; progress: number }
   | { kind: 'recording'; live: boolean } // live: false while waiting for mic permission
   | { kind: 'ready' }
-  | { kind: 'compare' };
+  | { kind: 'practice' };
 
 type Listener = (status: Status) => void;
 

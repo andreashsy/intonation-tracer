@@ -4,6 +4,10 @@ import { formatBytes } from '../phrases.ts';
 import type { Role } from './db.ts';
 
 export interface SaveRequest {
+  /** Dialog heading; defaults to "Save phrase". */
+  title?: string;
+  /** Fixes the role and hides the choice (e.g. saving a Practice model). */
+  lockRole?: Role;
   defaultName: string;
   summary: string; // e.g. "0:03.2–0:05.9 (2.7 s) from clip.mp4"
   defaultRole: Role;
@@ -37,6 +41,7 @@ export class SaveDialog {
   private readonly videoLabel = $<HTMLSpanElement>('save-video-label');
   private readonly summary = $<HTMLParagraphElement>('save-summary');
   private readonly error = $<HTMLParagraphElement>('save-error');
+  private readonly roleField = this.form.querySelector<HTMLFieldSetElement>('.role-field')!;
   private resolve: ((a: SaveAnswer | null) => void) | null = null;
 
   constructor() {
@@ -72,9 +77,12 @@ export class SaveDialog {
 
   /** Shows the dialog; resolves with the answers, or null if cancelled. */
   ask(req: SaveRequest): Promise<SaveAnswer | null> {
+    $<HTMLHeadingElement>('save-title').textContent = req.title ?? 'Save phrase';
+    this.roleField.hidden = !!req.lockRole;
     this.name.value = req.defaultName;
     this.summary.textContent = req.summary;
-    for (const r of this.form.querySelectorAll<HTMLInputElement>('input[name=role]')) r.checked = r.value === req.defaultRole;
+    const role = req.lockRole ?? req.defaultRole;
+    for (const r of this.form.querySelectorAll<HTMLInputElement>('input[name=role]')) r.checked = r.value === role;
     let last = '';
     try {
       last = localStorage.getItem(LANGUAGE_KEY) ?? '';

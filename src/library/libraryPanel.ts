@@ -6,8 +6,8 @@ import { deletePhrase, listPhrases, type PhraseInfo, removeVideo, totalBytes } f
 
 export interface LibraryActions {
   open(id: string): void;
-  compare(id: string): void;
-  /** Called after any change so other views (compare pickers, save dialog) can refresh. */
+  practice(id: string): void;
+  /** Called after any change so other views (practice picker, save dialog) can refresh. */
   changed(items: PhraseInfo[]): void;
 }
 
@@ -94,7 +94,7 @@ export class LibraryPanel {
       const p = document.createElement('p');
       p.className = 'library-empty';
       p.textContent =
-        'No saved phrases yet. Load a clip or record yourself, press "Select phrase", pick a sentence, then "Save phrase…". Save a Model and one of your own takes to compare them.';
+        'No saved phrases yet. Load a clip or record yourself, press "Select phrase", pick a sentence, then "Save phrase…". Then press "Practice" on a Model to record yourself and match it.';
       nodes.push(p);
     }
 
@@ -164,11 +164,17 @@ export class LibraryPanel {
         this.close();
         this.actions.open(p.id);
       }),
-      this.actionButton('Compare', () => {
-        this.close();
-        this.actions.compare(p.id);
-      }),
     );
+    // Practice: on Models, and on takes that are linked to a Model.
+    const linked = p.role === 'model' || (!!p.modelId && this.items.some((i) => i.phrase.id === p.modelId));
+    if (linked) {
+      actions.append(
+        this.actionButton('Practice', () => {
+          this.close();
+          this.actions.practice(p.id);
+        }),
+      );
+    }
     if (info.videoSize) {
       const freed = info.videoSharedBy > 1 ? 0 : info.videoSize;
       const b = this.actionButton('Remove video', async () => {

@@ -1,14 +1,14 @@
-import { CompareView } from './compare/compareView.ts';
 import { ANALYSIS, currentLimits, type VoiceRange } from './config.ts';
 import { DecodeError, decodeToMono } from './decoder.ts';
 import { looksLikeMedia, setupFileInput } from './fileInput.ts';
 import { formatTime, spokenTime } from './format.ts';
 import { LivePitch } from './livePitch.ts';
 import { LiveView } from './liveView.ts';
-import { getPhrase, getSource, LibraryFull, libraryAvailable, type Phrase, savePhrase } from './library/db.ts';
+import { getPhrase, getSource, LibraryFull, libraryAvailable, savePhrase } from './library/db.ts';
+import { phraseFromClip } from './library/phraseBuilder.ts';
 import { LibraryPanel } from './library/libraryPanel.ts';
 import { SaveDialog } from './library/saveDialog.ts';
-import { detectPhrases, PHRASE, phraseAt, slicePcm, sliceTrace, type Span } from './phrases.ts';
+import { detectPhrases, PHRASE, phraseAt, type Span } from './phrases.ts';
 import { Player } from './player.ts';
 import { MicRecorder, RecorderError } from './recorder.ts';
 import { SeekBar } from './seekBar.ts';
@@ -16,7 +16,8 @@ import { getStatus, setStatus, subscribe } from './state.ts';
 import { TraceView } from './traceView.ts';
 import type { PitchTrack, WorkerRequest, WorkerResponse } from './types.ts';
 import { VoiceRangeControls } from './voiceRange.ts';
-import { encodeWav, floatToInt16 } from './wav.ts';
+import { PracticeView } from './practice/practiceView.ts';
+import { encodeWav } from './wav.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -67,8 +68,9 @@ const ui = {
   clearSelection: $<HTMLButtonElement>('clear-selection'),
   selectionHint: $<HTMLSpanElement>('selection-hint'),
   openLibrary: $<HTMLButtonElement>('open-library'),
-  compare: $<HTMLElement>('compare'),
-  closeCompare: $<HTMLButtonElement>('close-compare'),
+  practice: $<HTMLElement>('practice'),
+  closePractice: $<HTMLButtonElement>('close-practice'),
+  practicePhrase: $<HTMLButtonElement>('practice-phrase'),
 };
 
 const player = new Player(ui.media);
@@ -428,21 +430,21 @@ function updateSelectionUi(): void {
     ui.selectionLabel.textContent = `Phrase ${formatTime(selection.start)}–${formatTime(selection.end)} (${len.toFixed(1)} s)`;
     ui.savePhraseButton.textContent = 'Save phrase…';
     ui.savePhraseButton.hidden = false;
+    ui.practicePhrase.textContent = '🎙 Practice this phrase';
+    ui.practicePhrase.hidden = false;
   } else {
     ui.selectionLabel.textContent = bands.length
       ? 'Click a phrase on the trace, or drag across it.'
       : 'Drag across the trace to select a phrase.';
     ui.savePhraseButton.textContent = 'Save whole clip…';
     ui.savePhraseButton.hidden = !wholeClipSavable();
+    ui.practicePhrase.textContent = '🎙 Practice this clip';
+    ui.practicePhrase.hidden = !wholeClipSavable();
   }
 }
 
 function baseName(name: string): string {
   return name.replace(/\.[^.]+$/, '');
-}
-
-function newId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 async function saveSelection(): Promise<void> {
@@ -470,25 +472,13 @@ async function saveSelection(): Promise<void> {
     languages: [...new Set(items.map((i) => i.phrase.language).filter((l): l is string => !!l))],
   });
   while (answer) {
-    const t = sliceTrace(track, span);
-    const pcm = slicePcm(pcmAll, ANALYSIS.sampleRate, span);
-    const phrase: Phrase = {
-      id: newId(),
-      name: answer.name,
-      role: answer.role,
-      language: answer.language,
-      modelId: answer.modelId,
-      createdAt: Date.now(),
-      duration: pcm.length / ANALYSIS.sampleRate,
-      audio: encodeWav([floatToInt16(pcm)], ANALYSIS.sampleRate),
-      f0: t.f0,
-      hopSeconds: track.hopSeconds,
-      frameCenterOffset: t.frameCenterOffset,
-      medianF0: t.medianF0,
-      voiceRange: { ...voiceRange.range },
-      sourceStart: span.start,
-      sourceName: file.name,
-    };
+    const phrase = phraseFromClip(
+      { name: answer.name, role: answer.role, language: answer.language, modelId: answer.modelId, sourceName: file.name },
+      track,
+      pcmAll,
+      span,
+      voiceRange.range,
+    );
     try {
       await savePhrase(phrase, answer.keepVideo ? file : undefined);
       saveDialog.close();
@@ -505,15 +495,16 @@ async function saveSelection(): Promise<void> {
   }
 }
 
-// ---- library and compare (M1 spec §7–§8) ----
+// ---- library (M1 spec §7) and practice (M2 spec) ----
 
 const saveDialog = new SaveDialog();
-const compareView = new CompareView();
+const practiceView = new PracticeView({ saveDialog, refreshLibrary: () => library.refresh() });
 const library = new LibraryPanel({
   open: (id) => void openPhrase(id),
-  compare: (id) => void openCompare(id),
-  changed: (items) => compareView.setItems(items),
+  practice: (id) => void openPractice(id),
+  changed: (items) => practiceView.setItems(items),
 });
+ui.practicePhrase.addEventListener('click', () => void practiceCurrentPhrase());
 
 void libraryAvailable().then((ok) => {
   if (ok) void library.refresh();
@@ -521,7 +512,7 @@ void libraryAvailable().then((ok) => {
 });
 
 async function openPhrase(id: string): Promise<void> {
-  if (getStatus().kind === 'compare') closeCompare();
+  if (getStatus().kind === 'practice') closePractice();
   const p = await getPhrase(id);
   if (!p) return;
   const src = p.sourceId ? await getSource(p.sourceId) : undefined;
@@ -535,17 +526,35 @@ async function openPhrase(id: string): Promise<void> {
   }
 }
 
-async function openCompare(id: string): Promise<void> {
+async function openPractice(id: string): Promise<void> {
   player.pause();
-  setStatus({ kind: 'compare' });
-  await compareView.openWith(id);
+  setStatus({ kind: 'practice' });
+  await practiceView.openWithPhrase(id);
 }
 
-function closeCompare(): void {
-  compareView.close();
+/** Practice the selected phrase (or the whole short clip) without saving it first. */
+async function practiceCurrentPhrase(): Promise<void> {
+  if (!currentPcm || !currentTrack || !currentFile) return;
+  const span: Span | null = selection ?? (wholeClipSavable() ? { start: 0, end: currentTrack.duration } : null);
+  if (!span) return;
+  player.pause();
+  setStatus({ kind: 'practice' });
+  await practiceView.openWithUnsaved({
+    file: currentFile,
+    hasVideo: !ui.videoWrap.hidden,
+    track: currentTrack,
+    pcm: currentPcm,
+    span,
+    voiceRange: { ...voiceRange.range },
+    name: selection ? `${baseName(currentFile.name)} ${formatTime(span.start)}` : baseName(currentFile.name),
+  });
+}
+
+function closePractice(): void {
+  practiceView.close();
   setStatus(currentTrack ? { kind: 'ready' } : { kind: 'empty' });
 }
-ui.closeCompare.addEventListener('click', () => closeCompare());
+ui.closePractice.addEventListener('click', () => closePractice());
 
 function syncPlayButton(): void {
   const playing = player.playing;
@@ -563,7 +572,7 @@ function frame(): void {
     // A selected phrase plays to its end, then stops.
     if (selection && scrubTime === null && player.playing && t >= selection.end) player.pause();
   }
-  if (getStatus().kind === 'compare') compareView.tick();
+  if (getStatus().kind === 'practice') practiceView.tick();
   if (getStatus().kind === 'recording') recordingFrame();
   requestAnimationFrame(frame);
 }
@@ -574,10 +583,15 @@ requestAnimationFrame(frame);
 document.addEventListener(
   'keydown',
   (e) => {
-    if (getStatus().kind !== 'ready') return;
+    const kind = getStatus().kind;
+    if (kind !== 'ready' && kind !== 'practice') return;
     if (e.metaKey || e.ctrlKey || e.altKey || library.isOpen || document.querySelector('dialog[open]')) return;
     // Let menus and text/number boxes keep their own keys (typing, arrows, Space).
     if (ownsKeys(e.target)) return;
+    if (kind === 'practice') {
+      if (practiceView.handleKey(e)) e.preventDefault();
+      return;
+    }
     const now = player.time();
     const jump = e.shiftKey ? 10 : 2;
     switch (e.key) {
@@ -615,7 +629,8 @@ document.addEventListener(
   'keyup',
   (e) => {
     if (library.isOpen || document.querySelector('dialog[open]')) return;
-    if (e.key === ' ' && getStatus().kind === 'ready' && !ownsKeys(e.target)) e.preventDefault();
+    const kind = getStatus().kind;
+    if (e.key === ' ' && (kind === 'ready' || kind === 'practice') && !ownsKeys(e.target)) e.preventDefault();
   },
   { capture: true },
 );
@@ -634,10 +649,10 @@ subscribe((s) => {
   ui.progress.hidden = s.kind !== 'loading';
   ui.viewer.hidden = s.kind !== 'ready';
   ui.recorder.hidden = s.kind !== 'recording';
-  ui.compare.hidden = s.kind !== 'compare';
+  ui.practice.hidden = s.kind !== 'practice';
   ui.openLibrary.hidden = s.kind === 'loading' || s.kind === 'recording';
   if (s.kind === 'ready') ui.fileName.textContent = currentName;
-  else if (s.kind === 'empty' || s.kind === 'compare') ui.fileName.textContent = 'Intonation Tracer';
+  else if (s.kind === 'empty' || s.kind === 'practice') ui.fileName.textContent = 'Intonation Tracer';
   ui.micWait.hidden = s.kind !== 'recording' || s.live;
   ui.actions.hidden = s.kind !== 'ready';
 
