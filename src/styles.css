@@ -1301,3 +1301,58 @@ button.danger {
     max-width: none;
   }
 }
+
+/* Library: download menu */
+.dl-menu {
+  position: relative;
+}
+
+.dl-menu summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 3px 10px;
+  font-size: 0.875rem;
+}
+
+.dl-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.dl-list {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 15rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.dl-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 0;
+  border-radius: 0;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.dl-item + .dl-item {
+  border-top: 1px solid var(--border);
+}
+
+.dl-item:hover,
+.dl-item:focus-visible {
+  background: var(--band);
+}
+
+.dl-item .hint {
+  font-size: 0.8125rem;
+}

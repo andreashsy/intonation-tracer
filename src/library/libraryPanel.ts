@@ -2,7 +2,8 @@
 
 import { formatTime } from '../format.ts';
 import { formatBytes, sparklinePath } from '../phrases.ts';
-import { deletePhrase, listPhrases, type PhraseInfo, removeVideo, totalBytes } from './db.ts';
+import { downloadBlob, extensionFor, safeFileName } from '../download.ts';
+import { deletePhrase, getSource, listPhrases, type Phrase, type PhraseInfo, removeVideo, totalBytes } from './db.ts';
 
 export interface LibraryActions {
   open(id: string): void;
@@ -175,6 +176,7 @@ export class LibraryPanel {
         }),
       );
     }
+    actions.append(this.downloadMenu(p, info.videoSize));
     if (info.videoSize) {
       const freed = info.videoSharedBy > 1 ? 0 : info.videoSize;
       const b = this.actionButton('Remove video', async () => {
@@ -205,6 +207,67 @@ export class LibraryPanel {
 
     row.append(badge, main, actions);
     return row;
+  }
+
+  /**
+   * "Download ▾": the phrase's audio (WAV, just the phrase) and, when the video was kept,
+   * the original video file (the whole clip; the phrase starts at the time shown).
+   */
+  private downloadMenu(p: Phrase, videoSize: number): HTMLElement {
+    const audioName = `${safeFileName(p.name)}.wav`;
+    const audio = () => downloadBlob(p.audio, audioName);
+    if (!videoSize) {
+      const b = this.actionButton('Download', audio);
+      b.title = `Save "${audioName}" (${formatBytes(p.audio.size)})`;
+      return b;
+    }
+    const menu = document.createElement('details');
+    menu.className = 'dl-menu';
+    const summary = document.createElement('summary');
+    summary.className = 'secondary small button';
+    summary.textContent = 'Download ▾';
+    const list = document.createElement('div');
+    list.className = 'dl-list';
+    const item = (label: string, detail: string, onClick: () => void) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dl-item';
+      const l = document.createElement('span');
+      l.textContent = label;
+      const d = document.createElement('span');
+      d.className = 'hint';
+      d.textContent = detail;
+      b.append(l, d);
+      b.addEventListener('click', () => {
+        menu.open = false;
+        onClick();
+      });
+      return b;
+    };
+    list.append(
+      item('Phrase audio (WAV)', `${formatTime(p.duration)} · ${formatBytes(p.audio.size)}`, audio),
+      item('Original video', `whole clip · ${formatBytes(videoSize)} · phrase starts at ${formatTime(p.sourceStart)}`, async () => {
+        const src = p.sourceId ? await getSource(p.sourceId) : undefined;
+        if (!src) return;
+        const base = safeFileName(src.name.replace(/\.[^.]+$/, ''), safeFileName(p.name));
+        downloadBlob(src.blob, `${base}.${extensionFor(src.type, src.name)}`);
+      }),
+    );
+    menu.append(summary, list);
+    // Close when focus or a click goes elsewhere.
+    menu.addEventListener('focusout', () => {
+      setTimeout(() => {
+        if (!menu.contains(document.activeElement)) menu.open = false;
+      }, 0);
+    });
+    menu.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && menu.open) {
+        e.stopPropagation(); // don't also close the library
+        menu.open = false;
+        summary.focus();
+      }
+    });
+    return menu;
   }
 
   private actionButton(label: string, onClick: () => void): HTMLButtonElement {

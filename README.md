@@ -54,13 +54,14 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
 | `src/pitchAxis.ts` | Hz ↔ semitones, note names, axis ticks and label formatting |
 | `src/units.ts` | Shared axis unit setting (Semitones / Hz / Notes) |
 | `src/readout.ts` | Pitch readout: hover, touch-and-hold ring, hint chip |
+| `src/download.ts` | Safe file names and saving files to the device |
 | `src/main.ts` | Wiring, load/cancel flow, selection, rAF loop, global keyboard handler |
 
 ## Phrase library (M1) and Practice (M2)
 
 - **Select a phrase:** press **✂ Select phrase**, then click a phrase on the trace (phrases are detected at pauses) or drag across any part (up to 30 s). Drag the edges to adjust. **Play phrase** plays just that part.
 - **Save it:** **Save phrase…** asks for a name, whether it's a **Model** (someone to sound like) or **Me**, an optional language, which Model a Me take goes with, and whether to keep the video (with its size). Short clips can be saved whole.
-- **Library:** the **Library** button lists Models with their takes underneath, with trace previews, sizes and the total. **Remove video** keeps the audio and trace; **Delete** asks once. Everything stays in this browser only.
+- **Library:** the **Library** button lists Models with their takes underneath, with trace previews, sizes and the total. **Download** saves the phrase audio as a WAV (and, if the video was kept, the original video file); **Remove video** keeps the audio and trace; **Delete** asks once. Everything stays in this browser only.
 - **Practice:** open it with **Practice** on a Model in the library, or **🎙 Practice this phrase** straight from a selection. Press **● Try again**: the model plays, a 3-2-1 count-in follows, then you speak and your line draws live over the faded model. Recording stops by itself about a second after you finish, and your take (dashed) appears over the model (solid), lined up at the first sound, with your previous take as a faint ghost.
   - Each line is measured from its own speaker's typical pitch, so a low and a high voice line up by shape.
   - **▶ Model** (at 1×, 0.75× or 0.5×, pitch preserved), **▶ My take**, **▶ Model → Me**. Drag the chart to shift your take.
@@ -122,7 +123,7 @@ In DevTools → Network, `pitch.worker-<hash>.js` should load with status 200 fr
 
 ## Status
 
-- Unit tests: 69 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop, Hz/semitone/note conversions and axis ticks).
+- Unit tests: 71 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop, Hz/semitone/note conversions and axis ticks).
 - Benchmark: 60 s analyzed in about 0.9 s on the build machine (budget 2 s).
 - Smoke-tested in headless Chromium with a synthetic 20 s WAV: load, unsupported file, no-speech file, play/pause via Space without double-toggle, arrow jumps, click and drag seeking, seek bar, cancel then reload, phone width, dark mode. No console errors.
 - Video tested in headless Chromium with a portrait YouTube Short, a landscape test video and an audio-only file, at desktop and phone widths: play button, seek bar, trace clicks, video click and Space all keep video and playhead in sync.
