@@ -65,7 +65,8 @@ export class TraceView {
     return this.viewStart;
   }
 
-  setTrack(track: PitchTrack): void {
+  /** keepView: leave the visible window where it is (used when re-analyzing the same clip). */
+  setTrack(track: PitchTrack, keepView = false): void {
     this.track = track;
     const n = track.f0.length;
     this.semis = new Float32Array(n);
@@ -85,7 +86,7 @@ export class TraceView {
       const extent = Math.max(Math.abs(p1), Math.abs(p99));
       this.range = Math.max(VIEW.minSemitoneRange, Math.ceil(extent / VIEW.semitoneStep) * VIEW.semitoneStep);
     }
-    this.viewStart = 0;
+    if (!keepView) this.viewStart = 0;
     this.drawTrace();
   }
 

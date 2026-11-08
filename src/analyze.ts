@@ -1,19 +1,23 @@
 // Framing loop: PCM → raw YIN frames → clean PitchTrack.
 // Shared by the worker and by the Node tests/benchmark.
 
-import { ANALYSIS } from './config.ts';
+import { ANALYSIS, type VoiceRange } from './config.ts';
 import { postprocess } from './postprocess.ts';
 import type { PitchTrack } from './types.ts';
 import { createYin } from './yin.ts';
 
-export type AnalysisParams = typeof ANALYSIS;
+export type AnalysisParams = { -readonly [K in keyof typeof ANALYSIS]: number };
 
 export function analyzePcm(
   pcm: Float32Array,
   sampleRate: number,
   onProgress?: (fraction: number) => void,
   params: AnalysisParams = ANALYSIS,
+  range?: VoiceRange,
 ): PitchTrack {
+  if (range) params = { ...params, minF0: range.minF0, maxF0: range.maxF0 };
+  // Remove energy below the voice range (bass, rumble, beats) so it can't mask the voice.
+  pcm = highPass(pcm, sampleRate, params.minF0 * HIGHPASS_RATIO);
   if (sampleRate !== params.sampleRate) {
     throw new Error(`Expected ${params.sampleRate} Hz audio, got ${sampleRate} Hz`);
   }
@@ -72,4 +76,41 @@ export function analyzePcm(
     rms,
     medianF0: clean.medianF0,
   };
+}
+
+/** High-pass cutoff as a fraction of the range's min F0. */
+export const HIGHPASS_RATIO = 0.8;
+
+/**
+ * 4th-order Butterworth high-pass (two cascaded biquads), run forward and
+ * backward so it adds no delay. Returns a new array.
+ */
+export function highPass(x: Float32Array, sampleRate: number, cutoff: number): Float32Array {
+  // Q values for a 4th-order Butterworth split into two 2nd-order sections.
+  const qs = [0.5411961, 1.3065630];
+  const y = Float32Array.from(x);
+  for (let pass = 0; pass < 2; pass++) {
+    for (const q of qs) biquadHighPassInPlace(y, sampleRate, cutoff, q);
+    y.reverse(); // second pass runs backward; two reversals restore the order
+  }
+  return y;
+}
+
+function biquadHighPassInPlace(x: Float32Array, sr: number, fc: number, q: number): void {
+  const w = (2 * Math.PI * fc) / sr;
+  const cos = Math.cos(w);
+  const alpha = Math.sin(w) / (2 * q);
+  const a0 = 1 + alpha;
+  const b0 = (1 + cos) / 2 / a0;
+  const b1 = -(1 + cos) / a0;
+  const b2 = b0;
+  const a1 = (-2 * cos) / a0;
+  const a2 = (1 - alpha) / a0;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < x.length; i++) {
+    const xi = x[i];
+    const yi = b0 * xi + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = xi; y2 = y1; y1 = yi;
+    x[i] = yi;
+  }
 }

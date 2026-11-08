@@ -1,3 +1,5 @@
+import type { VoiceRange } from './config.ts';
+
 export interface PitchTrack {
   hopSeconds: number; // 0.01
   /** Time of frame 0's center; frame i is at frameCenterOffset + i * hopSeconds. */
@@ -14,6 +16,7 @@ export type WorkerRequest = {
   id: number;
   pcm: Float32Array;
   sampleRate: number;
+  range: VoiceRange;
 };
 
 export type WorkerResponse =

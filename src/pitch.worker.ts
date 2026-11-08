@@ -1,4 +1,5 @@
 import { analyzePcm } from './analyze.ts';
+import { ANALYSIS } from './config.ts';
 import type { WorkerRequest, WorkerResponse } from './types.ts';
 
 // Typed view of the dedicated worker scope without pulling in the WebWorker lib
@@ -13,9 +14,13 @@ ctx.onmessage = (e) => {
   if (msg.type !== 'analyze') return;
   const { id } = msg;
   try {
-    const track = analyzePcm(msg.pcm, msg.sampleRate, (value) => {
-      ctx.postMessage({ type: 'progress', id, value });
-    });
+    const track = analyzePcm(
+      msg.pcm,
+      msg.sampleRate,
+      (value) => ctx.postMessage({ type: 'progress', id, value }),
+      ANALYSIS,
+      msg.range,
+    );
     ctx.postMessage({ type: 'done', id, track }, [
       track.f0.buffer,
       track.confidence.buffer,

@@ -22,6 +22,38 @@ export const ANALYSIS = {
   minRunFrames: 3,
 } as const;
 
+// ---- Voice range (which pitches count as the voice we follow) ----
+
+export interface VoiceRange {
+  minF0: number;
+  maxF0: number;
+}
+
+export type RangePresetId = 'any' | 'lower' | 'higher' | 'custom';
+
+export const RANGE_PRESETS: Record<Exclude<RangePresetId, 'custom'>, VoiceRange & { label: string }> = {
+  any: { label: 'Any voice', minF0: ANALYSIS.minF0, maxF0: ANALYSIS.maxF0 },
+  lower: { label: 'Lower voice', minF0: 60, maxF0: 300 },
+  higher: { label: 'Higher voice', minF0: 140, maxF0: 500 },
+};
+
+export const RANGE_LIMITS = {
+  /** Lowest allowed min. Its period (400 samples) must fit in the 640-sample frame. */
+  floor: 40,
+  ceiling: 1000,
+  /** Max must be at least this × min (one octave), so octave correction has room. */
+  minRatio: 2,
+} as const;
+
+/** Returns an error message, or null if the range is usable. */
+export function validateRange(r: VoiceRange): string | null {
+  if (!Number.isFinite(r.minF0) || !Number.isFinite(r.maxF0)) return 'Enter both numbers.';
+  if (r.minF0 < RANGE_LIMITS.floor) return `Min can't be below ${RANGE_LIMITS.floor} Hz.`;
+  if (r.maxF0 > RANGE_LIMITS.ceiling) return `Max can't be above ${RANGE_LIMITS.ceiling} Hz.`;
+  if (r.maxF0 < r.minF0 * RANGE_LIMITS.minRatio) return 'Max must be at least twice Min.';
+  return null;
+}
+
 export const VIEW = {
   windowSeconds: 8,
   /** Auto-scroll when the playhead passes this fraction of the window… */

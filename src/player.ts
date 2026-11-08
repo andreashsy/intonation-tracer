@@ -1,15 +1,15 @@
-// <audio> wrapper with a smoothed clock (spec §7.3).
+// <video>/<audio> wrapper with a smoothed clock (spec §7.3).
 // audio.currentTime updates coarsely in some browsers, so time() interpolates
 // with performance.now() between updates and never runs backwards while playing.
 
 export class Player {
-  readonly el: HTMLAudioElement;
+  readonly el: HTMLMediaElement;
   private anchorMedia = 0;
   private anchorPerf = 0;
   private lastSeen = -1;
   private lastReturned = 0;
 
-  constructor(el: HTMLAudioElement) {
+  constructor(el: HTMLMediaElement) {
     this.el = el;
     for (const ev of ['play', 'pause', 'seeked', 'ratechange', 'ended']) {
       el.addEventListener(ev, () => this.resync());

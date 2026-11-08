@@ -15,14 +15,14 @@ npm run dev        # http://localhost:5173
 npm test           # unit tests (Node's built-in runner, no extra deps)
 npm run bench      # analysis speed on 60 s of synthetic audio
 npm run typecheck
-npm run build      # static files in dist/, deployable to any static host
+npm run build      # static files in dist/ (see Deploy to GitHub Pages below)
 ```
 
 ## How it fits together
 
 ```
 file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) ─▶ PitchTrack
-  └─▶ <audio> via object URL ─▶ player (smoothed time) ─▶ traceView + seekBar (rAF loop)
+  └─▶ <video> via object URL ─▶ player (smoothed time) ─▶ traceView + seekBar (rAF loop)
 ```
 
 | File | What it does |
@@ -30,24 +30,59 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
 | `src/config.ts` | Every tunable number: YIN, voicing, gate, view, limits, trace offset |
 | `src/yin.ts` | Pure YIN estimator for one frame |
 | `src/postprocess.ts` | Gate + voicing, octave fix, median filter, short-run removal |
-| `src/analyze.ts` | Framing loop (skips YIN on gated frames); shared by worker and tests |
-| `src/pitch.worker.ts` | Worker entry; transfers buffers both ways |
+| `src/analyze.ts` | High-pass below the voice range, framing loop (skips YIN on gated frames); shared by worker and tests |
+| `src/pitch.worker.ts` | Worker entry; receives a copy of the audio (kept for re-analysis), transfers results back |
 | `src/decoder.ts` | Decode straight to 16 kHz, with OfflineAudioContext fallback |
-| `src/player.ts` | `<audio>` wrapper with an interpolated, monotonic clock |
+| `src/player.ts` | `<video>` wrapper (audio files too) with an interpolated, monotonic clock |
 | `src/traceView.ts` | Two-canvas drawing (trace + playhead), click/drag to seek |
 | `src/seekBar.ts` | Slider and time labels; seeks on release |
+| `src/voiceRange.ts` | Voice range menu and Min/Max inputs, validation, remembered choice |
 | `src/fileInput.ts` | Drop zone, picker, type check |
 | `src/main.ts` | Wiring, load/cancel flow, rAF loop, global keyboard handler |
 
+## Video
+
+Video files show their picture beside the trace (above it on phones). One `<video>` element plays sound and picture,
+so the play button, seek bar, trace clicks and shortcuts all move the video too, and they can't drift apart.
+Click the video to play/pause. Audio files show no video panel.
+
+## Voice range
+
+Below the player: pick *Any voice* (50–800 Hz), *Lower voice* (60–300 Hz), *Higher voice* (140–500 Hz), or type a custom Min/Max.
+Only pitches inside the range are traced, and audio below it is filtered out first, so a backing track's bass can't take over the line.
+Changing it re-traces the loaded clip in well under a second without stopping playback. The choice is remembered in the browser.
+
 ## Keyboard
 
-Space play/pause · ←/→ 2 s · Shift+←/→ 10 s · Home/End.
+Space play/pause · ←/→ 2 s · Shift+←/→ 10 s · Home/End. Shortcuts pause while you're typing in the voice range boxes.
+
+## Deploy to GitHub Pages
+
+The repo includes `.github/workflows/deploy.yml`, which tests, builds and publishes `dist/` on every push to `main`.
+
+1. **Push** this folder to a GitHub repository (any name), with `main` as the default branch.
+2. **Turn on Pages:** repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+3. **Run it:** push to `main`, or open **Actions → Deploy to GitHub Pages → Run workflow**.
+   The site appears at `https://<user>.github.io/<repo>/`; the link is also on the workflow run.
+4. **Commit the lockfile:** after your first local `npm install`, commit `package-lock.json`.
+   The workflow uses `npm ci` when it's there (faster, exact versions) and falls back to `npm install` until then.
+
+**Base path:** `vite.config.ts` uses `base: './'`, so the build works under any repo name, at a domain root,
+or on a custom domain without changes.
+
+**Build checks:** the workflow fails before deploying if the unit tests or type check fail, if the pitch worker
+chunk is missing from `dist/assets`, or if `index.html` has root-absolute (`/…`) asset paths.
+
+**Check the worker once on the live site:** open the site, load a short clip and confirm the trace appears.
+In DevTools → Network, `pitch.worker-<hash>.js` should load with status 200 from under `/<repo>/assets/`.
 
 ## Status
 
-- Unit tests: 25 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps).
+- Unit tests: 33 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter).
 - Benchmark: 60 s analyzed in about 0.9 s on the build machine (budget 2 s).
 - Smoke-tested in headless Chromium with a synthetic 20 s WAV: load, unsupported file, no-speech file, play/pause via Space without double-toggle, arrow jumps, click and drag seeking, seek bar, cancel then reload, phone width, dark mode. No console errors.
+- Video tested in headless Chromium with a portrait YouTube Short, a landscape test video and an audio-only file, at desktop and phone widths: play button, seek bar, trace clicks, video click and Space all keep video and playhead in sync.
+- Voice range tested in headless Chromium on a real music-backed clip: switching presets mid-playback, custom values, invalid input, keyboard isolation, remembered setting.
 
 ## Still to do for M0 sign-off
 

@@ -7,6 +7,8 @@ export interface RawFrames {
 }
 
 export interface PostprocessOptions {
+  minF0: number;
+  maxF0: number;
   voicingThreshold: number;
   gateFloorDb: number;
   gateRangeDb: number;
@@ -33,12 +35,17 @@ export function postprocess(raw: RawFrames, opts: PostprocessOptions): CleanFram
   const gate = Math.max(opts.gateFloorDb, loudest - opts.gateRangeDb);
   for (let i = 0; i < n; i++) {
     confidence[i] = 1 - raw.aperiodicity[i];
-    const voiced = raw.rms[i] >= gate && raw.aperiodicity[i] <= opts.voicingThreshold;
-    f0[i] = voiced ? raw.f0[i] : NaN;
+    const f = raw.f0[i];
+    const voiced =
+      raw.rms[i] >= gate &&
+      raw.aperiodicity[i] <= opts.voicingThreshold &&
+      f >= opts.minF0 &&
+      f <= opts.maxF0;
+    f0[i] = voiced ? f : NaN;
   }
 
-  // 2. Octave fix against the local median of voiced frames.
-  octaveFix(f0, opts.octaveWindowFrames, opts.octaveToleranceSt);
+  // 2. Octave fix against the local median of voiced frames (never folds outside the range).
+  octaveFix(f0, opts.octaveWindowFrames, opts.octaveToleranceSt, opts.minF0, opts.maxF0);
 
   // 3. Median filter within voiced runs.
   medianFilterRuns(f0, opts.medianFilterFrames);
@@ -49,7 +56,13 @@ export function postprocess(raw: RawFrames, opts: PostprocessOptions): CleanFram
   return { f0, confidence, medianF0: medianOfVoiced(f0) };
 }
 
-export function octaveFix(f0: Float32Array, halfWindow: number, toleranceSt: number): void {
+export function octaveFix(
+  f0: Float32Array,
+  halfWindow: number,
+  toleranceSt: number,
+  minF0 = 0,
+  maxF0 = Infinity,
+): void {
   const n = f0.length;
   const ref = f0.slice(); // compare against unfixed values so fixes don't cascade
   const buf: number[] = [];
@@ -61,8 +74,10 @@ export function octaveFix(f0: Float32Array, halfWindow: number, toleranceSt: num
     for (let j = lo; j <= hi; j++) if (!Number.isNaN(ref[j])) buf.push(ref[j]);
     const med = median(buf);
     const st = 12 * Math.log2(ref[i] / med);
-    if (Math.abs(st - 12) <= toleranceSt) f0[i] = ref[i] / 2;
-    else if (Math.abs(st + 12) <= toleranceSt) f0[i] = ref[i] * 2;
+    let folded = ref[i];
+    if (Math.abs(st - 12) <= toleranceSt) folded = ref[i] / 2;
+    else if (Math.abs(st + 12) <= toleranceSt) folded = ref[i] * 2;
+    if (folded >= minF0 && folded <= maxF0) f0[i] = folded;
   }
 }
 

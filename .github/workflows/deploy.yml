@@ -1,0 +1,73 @@
+# Builds the app and publishes dist/ to GitHub Pages.
+# One-time setup: repo Settings → Pages → Build and deployment → Source: GitHub Actions.
+# Action versions are pinned to commits (as in the Vite deploy guide); the comment shows the tag.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deployment at a time; a newer push replaces one still running.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: lts/* # needs 22.18+ to run the .ts tests directly
+          cache: npm
+          cache-dependency-path: package.json
+
+      - name: Install dependencies
+        # npm ci needs a committed package-lock.json; fall back to npm install until there is one.
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build (type check + Vite)
+        run: npm run build
+
+      - name: Check build output
+        run: |
+          echo "Built files:"; ls -la dist dist/assets
+          if ! ls dist/assets | grep -q '^pitch\.worker.*\.js$'; then
+            echo "::error::Pitch worker chunk missing from dist/assets"; exit 1
+          fi
+          if grep -Eq '(src|href)="/' dist/index.html; then
+            echo "::error::index.html has root-absolute asset paths; check base in vite.config.ts"; exit 1
+          fi
+
+      - name: Set up Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: ./dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

@@ -1,0 +1,138 @@
+// Voice range controls: a preset menu plus Min/Max Hz inputs.
+// Picking a preset fills the inputs; editing an input switches the menu to Custom.
+// The choice is remembered in this browser (best effort).
+
+import { RANGE_LIMITS, RANGE_PRESETS, type RangePresetId, type VoiceRange, validateRange } from './config.ts';
+
+const STORAGE_KEY = 'intonation-tracer.voiceRange';
+
+interface Saved {
+  preset: RangePresetId;
+  range: VoiceRange;
+}
+
+export class VoiceRangeControls {
+  private readonly preset: HTMLSelectElement;
+  private readonly min: HTMLInputElement;
+  private readonly max: HTMLInputElement;
+  private readonly status: HTMLElement;
+  private readonly onChange: (range: VoiceRange) => void;
+  private applied: VoiceRange;
+
+  constructor(
+    preset: HTMLSelectElement,
+    min: HTMLInputElement,
+    max: HTMLInputElement,
+    status: HTMLElement,
+    onChange: (range: VoiceRange) => void,
+  ) {
+    this.onChange = onChange;
+    this.preset = preset;
+    this.min = min;
+    this.max = max;
+    this.status = status;
+
+    for (const input of [min, max]) {
+      input.min = String(RANGE_LIMITS.floor);
+      input.max = String(RANGE_LIMITS.ceiling);
+      input.step = '5';
+    }
+    preset.replaceChildren(
+      ...Object.entries(RANGE_PRESETS).map(([id, p]) => new Option(`${p.label} (${p.minF0}–${p.maxF0} Hz)`, id)),
+      new Option('Custom', 'custom'),
+    );
+
+    const saved = load();
+    this.applied = saved.range;
+    preset.value = saved.preset;
+    this.showRange(saved.range);
+
+    preset.addEventListener('change', () => {
+      const id = preset.value as RangePresetId;
+      if (id === 'custom') {
+        min.focus();
+        return;
+      }
+      const p = RANGE_PRESETS[id];
+      this.showRange(p);
+      this.apply(p);
+    });
+
+    for (const input of [min, max]) {
+      input.addEventListener('input', () => {
+        this.preset.value = 'custom';
+      });
+      // Apply on commit (Enter, blur, spinner release), not on every keystroke.
+      input.addEventListener('change', () => this.applyInputs());
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this.applyInputs();
+      });
+    }
+  }
+
+  get range(): VoiceRange {
+    return this.applied;
+  }
+
+  setBusy(busy: boolean): void {
+    if (busy) this.setStatus('Re-analyzing…', false);
+    else if (this.status.dataset.kind !== 'error') this.setStatus('', false);
+  }
+
+  private applyInputs(): void {
+    const r = { minF0: this.min.valueAsNumber, maxF0: this.max.valueAsNumber };
+    const error = validateRange(r);
+    this.min.setAttribute('aria-invalid', String(Boolean(error)));
+    this.max.setAttribute('aria-invalid', String(Boolean(error)));
+    if (error) {
+      this.setStatus(error, true);
+      return;
+    }
+    // Snap the menu back to a preset if the numbers match one.
+    const match = Object.entries(RANGE_PRESETS).find(([, p]) => p.minF0 === r.minF0 && p.maxF0 === r.maxF0);
+    this.preset.value = match ? match[0] : 'custom';
+    this.apply(r);
+  }
+
+  private apply(r: VoiceRange): void {
+    this.setStatus('', false);
+    this.min.setAttribute('aria-invalid', 'false');
+    this.max.setAttribute('aria-invalid', 'false');
+    if (r.minF0 === this.applied.minF0 && r.maxF0 === this.applied.maxF0) return;
+    this.applied = { minF0: r.minF0, maxF0: r.maxF0 };
+    save({ preset: this.preset.value as RangePresetId, range: this.applied });
+    this.onChange(this.applied);
+  }
+
+  private showRange(r: VoiceRange): void {
+    this.min.value = String(r.minF0);
+    this.max.value = String(r.maxF0);
+  }
+
+  private setStatus(text: string, isError: boolean): void {
+    this.status.textContent = text;
+    this.status.dataset.kind = isError ? 'error' : '';
+  }
+}
+
+function load(): Saved {
+  const fallback: Saved = { preset: 'any', range: { minF0: RANGE_PRESETS.any.minF0, maxF0: RANGE_PRESETS.any.maxF0 } };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return fallback;
+    const s = JSON.parse(raw) as Saved;
+    if (!s?.range || validateRange(s.range)) return fallback;
+    const preset = (['any', 'lower', 'higher', 'custom'] as const).includes(s.preset) ? s.preset : 'custom';
+    return { preset, range: { minF0: s.range.minF0, maxF0: s.range.maxF0 } };
+  } catch {
+    return fallback;
+  }
+}
+
+function save(s: Saved): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+  } catch {
+    // Storage unavailable (private mode, blocked): the setting just isn't remembered.
+  }
+}

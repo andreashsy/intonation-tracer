@@ -1,4 +1,4 @@
-import { ANALYSIS, currentLimits } from './config.ts';
+import { ANALYSIS, currentLimits, type VoiceRange } from './config.ts';
 import { DecodeError, decodeToMono } from './decoder.ts';
 import { looksLikeMedia, setupFileInput } from './fileInput.ts';
 import { spokenTime } from './format.ts';
@@ -7,6 +7,7 @@ import { SeekBar } from './seekBar.ts';
 import { getStatus, setStatus, subscribe } from './state.ts';
 import { TraceView } from './traceView.ts';
 import type { PitchTrack, WorkerRequest, WorkerResponse } from './types.ts';
+import { VoiceRangeControls } from './voiceRange.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -30,10 +31,15 @@ const ui = {
   seek: $<HTMLInputElement>('seek'),
   timeCurrent: $<HTMLSpanElement>('time-current'),
   timeTotal: $<HTMLSpanElement>('time-total'),
-  audio: $<HTMLAudioElement>('audio'),
+  media: $<HTMLVideoElement>('media'),
+  videoWrap: $<HTMLDivElement>('video-wrap'),
+  rangePreset: $<HTMLSelectElement>('range-preset'),
+  rangeMin: $<HTMLInputElement>('range-min'),
+  rangeMax: $<HTMLInputElement>('range-max'),
+  rangeStatus: $<HTMLSpanElement>('range-status'),
 };
 
-const player = new Player(ui.audio);
+const player = new Player(ui.media);
 let scrubTime: number | null = null;
 
 const traceView = new TraceView(ui.traceWrap, ui.traceCanvas, ui.overlayCanvas, {
@@ -47,7 +53,15 @@ const seekBar = new SeekBar(ui.seek, ui.timeCurrent, ui.timeTotal, (t) => seekTo
 // ---- loading ----
 
 let loadToken = 0;
+let analysisSeq = 0;
 let objectUrl: string | null = null;
+/** Decoded 16 kHz mono audio of the current file, kept so a range change can re-analyze it. */
+let currentPcm: Float32Array | null = null;
+let currentName = '';
+
+const voiceRange = new VoiceRangeControls(ui.rangePreset, ui.rangeMin, ui.rangeMax, ui.rangeStatus, (r) =>
+  void reanalyze(r),
+);
 let worker: Worker | null = null;
 let pendingReject: ((err: Error) => void) | null = null;
 
@@ -89,9 +103,11 @@ async function loadFile(file: File): Promise<void> {
       return fail(`Please use a file under ${limits.label}.`);
     }
 
-    // 3. Analyze in the worker.
+    // 3. Analyze in the worker, using the current voice range.
+    currentPcm = pcm;
+    currentName = file.name;
     setStatus({ kind: 'loading', step: 'analyzing', progress: 0 });
-    const track = await analyzeInWorker(pcm, token, (p) => {
+    const track = await analyzeInWorker(pcm, voiceRange.range, (p) => {
       if (token === loadToken) setStatus({ kind: 'loading', step: 'analyzing', progress: p });
     });
     if (token !== loadToken) return;
@@ -104,8 +120,27 @@ async function loadFile(file: File): Promise<void> {
   }
 }
 
-function analyzeInWorker(pcm: Float32Array, id: number, onProgress: (p: number) => void): Promise<PitchTrack> {
-  worker ??= new Worker(new URL('./pitch.worker.ts', import.meta.url), { type: 'module' });
+/** Re-runs analysis on the loaded clip with a new range. Playback and the view keep going. */
+async function reanalyze(range: VoiceRange): Promise<void> {
+  if (getStatus().kind !== 'ready' || !currentPcm) return; // applies to the next file instead
+  const token = loadToken;
+  voiceRange.setBusy(true);
+  try {
+    const track = await analyzeInWorker(currentPcm, range, () => {});
+    if (token !== loadToken) return;
+    showTrack(currentName, track, true);
+    voiceRange.setBusy(false);
+  } catch (err) {
+    if (err instanceof Cancelled || token !== loadToken) return;
+    voiceRange.setBusy(false);
+    ui.rangeStatus.textContent = 'Re-analysis failed. Try another range.';
+  }
+}
+
+function analyzeInWorker(pcm: Float32Array, range: VoiceRange, onProgress: (p: number) => void): Promise<PitchTrack> {
+  stopWorker(); // only one analysis at a time; a newer request replaces an older one
+  const id = ++analysisSeq;
+  worker = new Worker(new URL('./pitch.worker.ts', import.meta.url), { type: 'module' });
   const w = worker;
   return new Promise<PitchTrack>((resolve, reject) => {
     pendingReject = reject;
@@ -123,8 +158,9 @@ function analyzeInWorker(pcm: Float32Array, id: number, onProgress: (p: number) 
       pendingReject = null;
       reject(new Error(e.message || 'Pitch analysis failed.'));
     };
-    const req: WorkerRequest = { type: 'analyze', id, pcm, sampleRate: ANALYSIS.sampleRate };
-    w.postMessage(req, [pcm.buffer]);
+    // Sent as a copy (no transfer) so the PCM stays here for later range changes.
+    const req: WorkerRequest = { type: 'analyze', id, pcm, sampleRate: ANALYSIS.sampleRate, range };
+    w.postMessage(req);
   });
 }
 
@@ -139,6 +175,7 @@ function resetMedia(): void {
   player.unload();
   if (objectUrl) URL.revokeObjectURL(objectUrl);
   objectUrl = null;
+  currentPcm = null;
   scrubTime = null;
   traceView.clear();
 }
@@ -160,12 +197,23 @@ function fail(message: string): void {
 
 let duration = 0;
 
-function showTrack(name: string, track: PitchTrack): void {
-  duration = Number.isFinite(player.duration) ? player.duration : track.duration;
-  setStatus({ kind: 'ready' });
-  traceView.setTrack(track);
-  seekBar.setDuration(duration);
+function showTrack(name: string, track: PitchTrack, keepView = false): void {
+  if (!keepView) {
+    duration = Number.isFinite(player.duration) ? player.duration : track.duration;
+    // Show the picture only for files that have one; audio files keep the full-width trace.
+    const hasVideo = ui.media.videoWidth > 0 && ui.media.videoHeight > 0;
+    ui.videoWrap.hidden = !hasVideo;
+    ui.videoWrap.classList.toggle('portrait', hasVideo && ui.media.videoHeight > ui.media.videoWidth);
+    ui.media.setAttribute('aria-label', `Video: ${name}`);
+    setStatus({ kind: 'ready' });
+    seekBar.setDuration(duration);
+  }
+  traceView.setTrack(track, keepView);
   ui.noVoice.hidden = !Number.isNaN(track.medianF0);
+  ui.noVoice.textContent =
+    voiceRange.range.minF0 === ANALYSIS.minF0 && voiceRange.range.maxF0 === ANALYSIS.maxF0
+      ? 'No speech detected in this file.'
+      : 'No speech detected in this voice range. Try a wider range.';
   ui.traceCanvas.setAttribute('aria-label', `Pitch trace of ${name}, ${spokenTime(duration)}`);
 }
 
@@ -177,13 +225,15 @@ function seekTo(t: number): void {
 }
 
 ui.play.addEventListener('click', () => player.toggle());
+// Tapping the video plays/pauses too, like most players.
+ui.media.addEventListener('click', () => player.toggle());
 
 function syncPlayButton(): void {
   const playing = player.playing;
   ui.play.textContent = playing ? '❚❚' : '▶';
   ui.play.setAttribute('aria-label', playing ? 'Pause' : 'Play');
 }
-for (const ev of ['play', 'pause', 'ended']) ui.audio.addEventListener(ev, syncPlayButton);
+for (const ev of ['play', 'pause', 'ended']) ui.media.addEventListener(ev, syncPlayButton);
 
 function frame(): void {
   if (getStatus().kind === 'ready') {
@@ -203,6 +253,9 @@ document.addEventListener(
   (e) => {
     if (getStatus().kind !== 'ready') return;
     if (e.target === ui.fileInput || e.metaKey || e.ctrlKey || e.altKey) return;
+    // Let the range menu and number boxes keep their own keys (typing, arrows, Space).
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'SELECT' || (target instanceof HTMLInputElement && target.type === 'number')) return;
     const now = player.time();
     const jump = e.shiftKey ? 10 : 2;
     switch (e.key) {
@@ -235,7 +288,9 @@ document.addEventListener(
 document.addEventListener(
   'keyup',
   (e) => {
-    if (e.key === ' ' && getStatus().kind === 'ready') e.preventDefault();
+    const target = e.target as HTMLElement;
+    const ownsKeys = target.tagName === 'SELECT' || (target instanceof HTMLInputElement && target.type === 'number');
+    if (e.key === ' ' && getStatus().kind === 'ready' && !ownsKeys) e.preventDefault();
   },
   { capture: true },
 );

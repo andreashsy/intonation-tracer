@@ -30,10 +30,16 @@
 
       <!-- Ready -->
       <section id="viewer" class="viewer" hidden>
-        <div class="trace-wrap" id="trace-wrap">
-          <canvas id="trace-canvas" role="img" aria-label="Pitch trace"></canvas>
-          <canvas id="overlay-canvas" aria-hidden="true"></canvas>
-          <p id="no-voice" class="no-voice" hidden>No speech detected in this file.</p>
+        <div class="stage" id="stage">
+          <!-- One element plays both sound and picture, so video, audio and trace share one clock. -->
+          <div class="video-wrap" id="video-wrap" hidden>
+            <video id="media" preload="auto" playsinline webkit-playsinline></video>
+          </div>
+          <div class="trace-wrap" id="trace-wrap">
+            <canvas id="trace-canvas" role="img" aria-label="Pitch trace"></canvas>
+            <canvas id="overlay-canvas" aria-hidden="true"></canvas>
+            <p id="no-voice" class="no-voice" hidden>No speech detected in this file.</p>
+          </div>
         </div>
         <div class="controls">
           <button type="button" id="play" class="play" aria-label="Play">▶</button>
@@ -41,9 +47,22 @@
           <input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="Seek" />
           <span id="time-total" class="time">0:00.0</span>
         </div>
+        <fieldset class="settings" aria-describedby="range-help">
+          <legend class="visually-hidden">Voice range</legend>
+          <label for="range-preset" class="settings-label">Voice range</label>
+          <select id="range-preset"></select>
+          <span class="range-inputs">
+            <label>Min <input type="number" id="range-min" inputmode="numeric" /> Hz</label>
+            <span aria-hidden="true">–</span>
+            <label>Max <input type="number" id="range-max" inputmode="numeric" /> Hz</label>
+          </span>
+          <span id="range-status" class="range-status" role="status"></span>
+          <p id="range-help" class="hint range-help">
+            Only pitches inside this range are traced. Narrow it to the voice you want to follow to ignore bass, music and lower or higher voices.
+          </p>
+        </fieldset>
       </section>
     </main>
-    <audio id="audio" preload="auto" hidden></audio>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -76,6 +76,11 @@ button {
   cursor: pointer;
 }
 
+.topbar button {
+  flex: none;
+  white-space: nowrap;
+}
+
 button.secondary:hover {
   border-color: var(--text-muted);
 }
@@ -158,9 +163,57 @@ button.secondary:hover {
   overflow: hidden;
 }
 
+/* Video beside the trace on wide screens, above it on narrow ones. */
+.stage {
+  --stage-h: clamp(220px, 45vh, 420px);
+  display: flex;
+}
+
+.video-wrap {
+  flex: none;
+  max-width: 50%;
+  height: var(--stage-h);
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--border);
+}
+
+.video-wrap video {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  cursor: pointer;
+}
+
 .trace-wrap {
   position: relative;
-  height: clamp(220px, 45vh, 420px);
+  flex: 1;
+  min-width: 0;
+  height: var(--stage-h);
+}
+
+@media (max-width: 720px) {
+  .stage {
+    flex-direction: column;
+  }
+  .video-wrap {
+    max-width: none;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .video-wrap video {
+    height: auto;
+    width: 100%;
+    max-height: 40vh;
+  }
+  .trace-wrap {
+    flex: none; /* keep its own height when stacked */
+    height: clamp(220px, 38vh, 360px);
+  }
 }
 
 .trace-wrap canvas {
@@ -215,6 +268,62 @@ button.secondary:hover {
   flex: 1;
   min-width: 0;
   accent-color: var(--accent);
+}
+
+/* Voice range */
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+  padding: 12px 16px 14px;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.settings-label {
+  font-weight: 600;
+}
+
+.settings select,
+.settings input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+.settings input {
+  width: 5.5em; /* fits 4 digits plus the spinner */
+  font-variant-numeric: tabular-nums;
+}
+
+.settings input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.range-inputs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.range-status {
+  color: var(--text-muted);
+}
+
+.range-status[data-kind='error'] {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.range-help {
+  flex-basis: 100%;
+  font-size: 0.875rem;
 }
 
 [hidden] {
