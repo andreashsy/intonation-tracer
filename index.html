@@ -54,6 +54,13 @@
 
       <!-- Ready -->
       <section id="viewer" class="viewer" hidden>
+        <div class="chart-toolbar">
+          <label class="axis-label">Axis
+            <select class="axis-unit" aria-label="Chart axis unit">
+              <option value="st">Semitones</option><option value="hz">Hz</option><option value="notes">Notes</option>
+            </select></label>
+          <button type="button" class="axis-help-button" aria-label="What do semitones and Hz mean?" title="What do semitones and Hz mean?">ⓘ</button>
+        </div>
         <div class="stage" id="stage">
           <!-- One element plays both sound and picture, so video, audio and trace share one clock. -->
           <div class="video-wrap" id="video-wrap" hidden>
@@ -108,6 +115,20 @@
           <span id="model-meta" class="hint"></span>
         </div>
         <p id="practice-empty" class="panel-empty" hidden></p>
+        <div class="chart-toolbar">
+          <label class="axis-label">Axis
+            <select class="axis-unit" aria-label="Chart axis unit">
+              <option value="st">Semitones</option><option value="hz">Hz</option><option value="notes">Notes</option>
+            </select></label>
+          <span class="hz-for" id="hz-for-group">
+            <span id="hz-for-label">Right axis for</span>
+            <span class="segmented" role="radiogroup" aria-labelledby="hz-for-label">
+              <button type="button" role="radio" id="hz-for-model" aria-checked="true">Model</button>
+              <button type="button" role="radio" id="hz-for-me" aria-checked="false">Me</button>
+            </span>
+          </span>
+          <button type="button" class="axis-help-button" aria-label="What do semitones and Hz mean?" title="What do semitones and Hz mean?">ⓘ</button>
+        </div>
         <div class="stage panel-stage" id="practice-stage">
           <div class="video-wrap" id="practice-video-wrap" hidden>
             <video id="practice-media" preload="auto" playsinline webkit-playsinline></video>
@@ -178,6 +199,21 @@
       <p id="library-usage" class="hint"></p>
       <div id="library-list" class="library-list"></div>
     </aside>
+
+    <!-- Semitones and Hz explainer (pitch-axis spec §8) -->
+    <dialog id="axis-help" class="save-dialog axis-help" aria-labelledby="axis-help-title">
+      <h2 id="axis-help-title">Semitones and Hz</h2>
+      <p><strong>Semitones (st)</strong> measure pitch the way we hear it: one semitone is one piano key.
+        <strong>12 st = 1 octave = double the Hz.</strong></p>
+      <p><strong>"typical" (0 st)</strong> is the speaker's typical pitch in this clip. Lines above it are higher, lines below are lower.</p>
+      <div class="axis-example" id="axis-example"></div>
+      <p><strong>Why semitones?</strong> A man around 100 Hz and a woman around 200 Hz asking the same question both rise about 7 st,
+        so their lines have the same shape even though the Hz are different. That's what lets you compare yourself with a model.</p>
+      <p><strong>The voice range (Hz)</strong> decides which pitches are traced at all. Anything outside it is ignored, and the typical pitch is worked out from what's left.
+        While you edit a range, its limits appear on the chart.</p>
+      <p class="hint">Hover over the trace, or touch and hold it, to read the exact Hz and st at any moment. Change <em>Axis</em> to see the chart in Hz or musical notes.</p>
+      <div class="dialog-actions"><button type="button" class="primary" id="axis-help-close">Got it</button></div>
+    </dialog>
 
     <!-- Save phrase dialog (M1) -->
     <dialog id="save-dialog" class="save-dialog" aria-labelledby="save-title">

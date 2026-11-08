@@ -1,12 +1,29 @@
-// Canvas drawing of the pitch trace, axes and playhead, plus click/drag to seek (spec §7, §8).
-// Two stacked canvases: the trace layer redraws only on view/size changes;
-// the overlay layer (playhead) redraws every animation frame.
+// Canvas drawing of the pitch trace, axes and playhead, plus click/drag to seek (M0 spec §7, §8),
+// phrase selection (M1 §4), and the semitone/Hz aids (pitch-axis spec): unit modes, a right-hand
+// axis in the other unit, a labelled typical-pitch line, voice range guides, and the readout.
+// Two stacked canvases: the trace layer redraws only on view/size changes; the overlay layer
+// (playhead and readout guide) redraws every animation frame.
 
-import { TRACE_OFFSET_SECONDS, VIEW } from './config.ts';
+import { TRACE_OFFSET_SECONDS, VIEW, type VoiceRange } from './config.ts';
+import { formatTime } from './format.ts';
 import { normalizeSpan, type Span } from './phrases.ts';
+import {
+  type AxisUnit,
+  formatHz,
+  formatSt,
+  guidePosition,
+  hzDomain,
+  hzTicks,
+  hzToSt,
+  noteName,
+  noteTicks,
+  stToHz,
+} from './pitchAxis.ts';
+import { Readout } from './readout.ts';
 import type { PitchTrack } from './types.ts';
 
-const MARGIN = { left: 56, right: 12, top: 12, bottom: 28 };
+const MARGIN = { left: 56, right: 56, top: 12, bottom: 28 };
+const EDGE_GRAB_PX = 8;
 
 export interface TraceViewCallbacks {
   /** Pointer released: seek to this time. */
@@ -19,8 +36,6 @@ export interface TraceViewCallbacks {
   onPick(t: number): void;
 }
 
-const EDGE_GRAB_PX = 8;
-
 interface Colors {
   trace: string;
   select: string;
@@ -29,15 +44,20 @@ interface Colors {
   zero: string;
   text: string;
   playhead: string;
+  shade: string;
 }
 
 export class TraceView {
   private readonly trace: HTMLCanvasElement;
   private readonly overlay: HTMLCanvasElement;
   private readonly cb: TraceViewCallbacks;
+  private readonly readout: Readout;
   private track: PitchTrack | null = null;
-  private semis: Float32Array = new Float32Array(0);
-  private range: number = VIEW.minSemitoneRange;
+  private range: number = VIEW.minSemitoneRange; // ± semitones shown in 'st' mode
+  private hzLo = 75; // log-Hz domain in 'hz'/'notes' modes
+  private hzHi = 400;
+  private unit: AxisUnit = 'st';
+  private guide: VoiceRange | null = null;
   private viewStart = 0;
   private width = 0;
   private height = 0;
@@ -46,6 +66,9 @@ export class TraceView {
   private mode: 'seek' | 'select' = 'seek';
   private selection: Span | null = null;
   private bands: Span[] = [];
+  /** Readout position in canvas pixels, or null when hidden. */
+  private readoutX: number | null = null;
+  private readoutY = 0;
 
   // Pointer state
   private pointerId: number | null = null;
@@ -58,6 +81,7 @@ export class TraceView {
     this.trace = trace;
     this.overlay = overlay;
     this.cb = cb;
+    this.readout = new Readout(wrap);
 
     new ResizeObserver(() => this.resize(wrap)).observe(wrap);
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
@@ -68,7 +92,16 @@ export class TraceView {
     overlay.addEventListener('pointerdown', (e) => this.onDown(e));
     overlay.addEventListener('pointermove', (e) => this.onMove(e));
     overlay.addEventListener('pointerup', (e) => this.onUp(e));
-    overlay.addEventListener('pointercancel', () => this.endPointer(true));
+    overlay.addEventListener('pointercancel', () => {
+      this.readout.pointerUp();
+      this.hideReadout();
+      this.endPointer(true);
+    });
+    overlay.addEventListener('pointerleave', (e) => {
+      if (e.pointerType !== 'touch' && this.pointerId === null) this.hideReadout();
+    });
+    // Long-press on touch would otherwise open the browser's context menu.
+    overlay.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   get windowSeconds(): number {
@@ -77,6 +110,22 @@ export class TraceView {
 
   get start(): number {
     return this.viewStart;
+  }
+
+  /** The clip's typical (median) pitch in Hz, or NaN. */
+  get typicalHz(): number {
+    return this.track?.medianF0 ?? NaN;
+  }
+
+  setUnit(unit: AxisUnit): void {
+    this.unit = unit;
+    this.drawTrace();
+  }
+
+  /** Voice range limits to draw while the range control is being edited (null hides them). */
+  setRangeGuide(range: VoiceRange | null): void {
+    this.guide = range;
+    this.drawTrace();
   }
 
   /** 'select': click picks a phrase, drag selects a span. 'seek': click/drag seek. */
@@ -100,24 +149,23 @@ export class TraceView {
   /** keepView: leave the visible window where it is (used when re-analyzing the same clip). */
   setTrack(track: PitchTrack, keepView = false): void {
     this.track = track;
-    const n = track.f0.length;
-    this.semis = new Float32Array(n);
-    const voiced: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const f = track.f0[i];
-      const st = Number.isNaN(f) ? NaN : 12 * Math.log2(f / track.medianF0);
-      this.semis[i] = st;
-      if (!Number.isNaN(st)) voiced.push(st);
+    const voicedSt: number[] = [];
+    const voicedHz: number[] = [];
+    for (const f of track.f0) {
+      if (Number.isNaN(f)) continue;
+      voicedHz.push(f);
+      voicedSt.push(hzToSt(f, track.medianF0));
     }
     // Widen past ±12 in 6-semitone steps if the 1st–99th percentile needs it.
     this.range = VIEW.minSemitoneRange;
-    if (voiced.length) {
-      voiced.sort((a, b) => a - b);
-      const p1 = voiced[Math.floor(voiced.length * 0.01)];
-      const p99 = voiced[Math.min(voiced.length - 1, Math.floor(voiced.length * 0.99))];
+    if (voicedSt.length) {
+      voicedSt.sort((a, b) => a - b);
+      const p1 = voicedSt[Math.floor(voicedSt.length * 0.01)];
+      const p99 = voicedSt[Math.min(voicedSt.length - 1, Math.floor(voicedSt.length * 0.99))];
       const extent = Math.max(Math.abs(p1), Math.abs(p99));
       this.range = Math.max(VIEW.minSemitoneRange, Math.ceil(extent / VIEW.semitoneStep) * VIEW.semitoneStep);
     }
+    [this.hzLo, this.hzHi] = hzDomain(voicedHz);
     if (!keepView) this.viewStart = 0;
     this.drawTrace();
   }
@@ -126,7 +174,7 @@ export class TraceView {
     this.track = null;
     this.selection = null;
     this.bands = [];
-    this.semis = new Float32Array(0);
+    this.hideReadout();
     this.drawTrace();
     this.drawPlayhead(NaN);
   }
@@ -139,6 +187,7 @@ export class TraceView {
     if (Math.abs(clamped - this.viewStart) < 1e-6) return false;
     this.viewStart = clamped;
     this.drawTrace();
+    if (this.readoutX !== null) this.updateReadout();
     return true;
   }
 
@@ -156,21 +205,47 @@ export class TraceView {
     if (t < this.viewStart || t > this.viewStart + span) this.setViewStart(t - VIEW.scrollTarget * span);
   }
 
+  /** Draws the playhead and, if active, the readout guide line and dot. Called every frame. */
   drawPlayhead(t: number): void {
     const ctx = this.overlay.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.clearRect(0, 0, this.width, this.height);
-    if (!this.track || Number.isNaN(t)) return;
-    const x = this.timeToX(t);
-    if (x < MARGIN.left - 1 || x > this.width - MARGIN.right + 1) return;
+    if (!this.track) return;
     const c = this.getColors();
-    ctx.strokeStyle = c.playhead;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(Math.round(x) + 0.5, MARGIN.top);
-    ctx.lineTo(Math.round(x) + 0.5, this.height - MARGIN.bottom);
-    ctx.stroke();
+    const right = this.width - MARGIN.right;
+    if (!Number.isNaN(t)) {
+      const x = this.timeToX(t);
+      if (x >= MARGIN.left - 1 && x <= right + 1) {
+        ctx.strokeStyle = c.playhead;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.round(x) + 0.5, MARGIN.top);
+        ctx.lineTo(Math.round(x) + 0.5, this.height - MARGIN.bottom);
+        ctx.stroke();
+      }
+    }
+    if (this.readoutX !== null) {
+      const x = Math.round(this.readoutX) + 0.5;
+      ctx.strokeStyle = c.text;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, MARGIN.top);
+      ctx.lineTo(x, this.height - MARGIN.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const f = this.f0At(this.xToTime(this.readoutX));
+      if (!Number.isNaN(f)) {
+        ctx.fillStyle = c.trace;
+        ctx.strokeStyle = getComputedStyle(this.trace).getPropertyValue('--surface').trim() || '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(this.readoutX, this.hzToY(f), 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
   }
 
   // ---- drawing ----
@@ -198,34 +273,71 @@ export class TraceView {
 
     const c = this.getColors();
     const plotRight = this.width - MARGIN.right;
+    const plotTop = MARGIN.top;
     const plotBottom = this.height - MARGIN.bottom;
+    const typical = this.track.medianF0;
+    const hasTypical = !Number.isNaN(typical);
+    const narrow = plotRight - MARGIN.left < 360;
 
-    // Semitone grid and labels.
+    // ---- y gridlines: left labels in the chosen unit, right labels in the other ----
     ctx.font = '12px system-ui, sans-serif';
-    ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    for (let st = -this.range; st <= this.range; st += VIEW.semitoneStep) {
-      const y = Math.round(this.stToY(st)) + 0.5;
-      ctx.strokeStyle = st === 0 ? c.zero : c.grid;
-      ctx.lineWidth = 1;
+    const gridLine = (y: number, strong: boolean, left: string, right: string) => {
+      const yy = Math.round(y) + 0.5;
+      ctx.strokeStyle = strong ? c.zero : c.grid;
+      ctx.lineWidth = strong ? 1.5 : 1;
       ctx.beginPath();
-      ctx.moveTo(MARGIN.left, y);
-      ctx.lineTo(plotRight, y);
+      ctx.moveTo(MARGIN.left, yy);
+      ctx.lineTo(plotRight, yy);
       ctx.stroke();
       ctx.fillStyle = c.text;
-      const label = st === 0 ? '0 st' : `${st > 0 ? '+' : '−'}${Math.abs(st)} st`;
-      ctx.fillText(label, MARGIN.left - 8, y);
+      ctx.textAlign = 'right';
+      ctx.fillText(left, MARGIN.left - 8, yy);
+      if (right) {
+        ctx.textAlign = 'left';
+        ctx.fillText(right, plotRight + 6, yy);
+      }
+    };
+    if (this.unit === 'st') {
+      let k = 0;
+      for (let st = -this.range; st <= this.range; st += VIEW.semitoneStep, k++) {
+        const showRight = hasTypical && (!narrow || k % 2 === 0 || st === 0);
+        gridLine(this.stToY(st), st === 0, st === 0 ? 'typical' : formatSt(st), showRight ? formatHz(stToHz(st, typical)) : '');
+      }
+    } else {
+      const ticks =
+        this.unit === 'hz'
+          ? hzTicks(this.hzLo, this.hzHi).map((hz) => ({ hz, label: formatHz(hz).replace(' Hz', '') }))
+          : noteTicks(this.hzLo, this.hzHi);
+      ticks.forEach((t, k) => {
+        const right = !hasTypical || (narrow && k % 2) ? '' : this.unit === 'hz' ? formatSt(hzToSt(t.hz, typical)) : formatHz(t.hz);
+        gridLine(this.hzToY(t.hz), false, this.unit === 'hz' ? `${t.label} Hz` : t.label, right);
+      });
+      // Typical pitch as its own dashed, labelled line.
+      if (hasTypical) {
+        const y = Math.round(this.hzToY(typical)) + 0.5;
+        ctx.strokeStyle = c.trace;
+        ctx.globalAlpha = 0.6;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(MARGIN.left, y);
+        ctx.lineTo(plotRight, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        this.tag(ctx, `typical ${formatHz(typical)}`, MARGIN.left + 6, y - 9, c.trace);
+      }
     }
 
-    // Time ticks: every second, or every 2 s when cramped.
+    // ---- time ticks: every second, or every 2 s when cramped ----
     const pxPerSec = (plotRight - MARGIN.left) / VIEW.windowSeconds;
     const step = pxPerSec < 50 ? 2 : 1;
-    ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const first = Math.ceil(this.viewStart / step) * step;
     for (let t = first; t <= this.viewStart + VIEW.windowSeconds + 1e-6; t += step) {
       const x = Math.round(this.timeToX(t)) + 0.5;
       ctx.strokeStyle = c.grid;
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(x, plotBottom);
       ctx.lineTo(x, plotBottom + 4);
@@ -233,14 +345,11 @@ export class TraceView {
       ctx.fillStyle = c.text;
       const m = Math.floor(t / 60);
       const s = Math.round(t - m * 60);
-      // Keep the label inside the canvas at the right edge.
-      ctx.textAlign = x + 18 > this.width ? 'right' : 'center';
-      ctx.fillText(`${m}:${String(s).padStart(2, '0')}`, ctx.textAlign === 'right' ? this.width - 2 : x, plotBottom + 8);
+      ctx.textAlign = 'center';
+      ctx.fillText(`${m}:${String(s).padStart(2, '0')}`, x, plotBottom + 8);
     }
 
-    // The trace: connected segments, broken at unvoiced frames.
-    // Phrase bands (select mode) and the selection, behind the trace.
-    const plotTop = MARGIN.top;
+    // ---- phrase bands (select mode) and the selection, behind the trace ----
     const shade = (span: Span, color: string) => {
       const x0 = Math.max(MARGIN.left, this.timeToX(span.start));
       const x1 = Math.min(plotRight, this.timeToX(span.end));
@@ -260,23 +369,22 @@ export class TraceView {
         ctx.moveTo(x, plotTop);
         ctx.lineTo(x, plotBottom);
         ctx.stroke();
-        // Grab handle
         ctx.fillStyle = c.trace;
         ctx.fillRect(x - 4, plotTop + (plotBottom - plotTop) / 2 - 12, 8, 24);
       }
     }
 
+    // ---- voice range guides while the range is being edited ----
+    if (this.guide && (hasTypical || this.unit !== 'st')) this.drawGuide(ctx, this.guide, c);
+
+    // ---- the trace: connected segments, broken at unvoiced frames ----
     const { hopSeconds, frameCenterOffset } = this.track;
     const t0 = frameCenterOffset + TRACE_OFFSET_SECONDS;
     const firstFrame = Math.max(0, Math.floor((this.viewStart - t0) / hopSeconds) - 1);
-    const lastFrame = Math.min(
-      this.semis.length - 1,
-      Math.ceil((this.viewStart + VIEW.windowSeconds - t0) / hopSeconds) + 1,
-    );
-
+    const lastFrame = Math.min(this.track.f0.length - 1, Math.ceil((this.viewStart + VIEW.windowSeconds - t0) / hopSeconds) + 1);
     ctx.save();
     ctx.beginPath();
-    ctx.rect(MARGIN.left, MARGIN.top, plotRight - MARGIN.left, plotBottom - MARGIN.top);
+    ctx.rect(MARGIN.left, plotTop, plotRight - MARGIN.left, plotBottom - plotTop);
     ctx.clip();
     ctx.strokeStyle = c.trace;
     ctx.lineWidth = 3;
@@ -285,19 +393,73 @@ export class TraceView {
     ctx.beginPath();
     let penDown = false;
     for (let i = firstFrame; i <= lastFrame; i++) {
-      const st = this.semis[i];
-      if (Number.isNaN(st)) {
+      const f = this.track.f0[i];
+      if (Number.isNaN(f)) {
         penDown = false;
         continue;
       }
       const x = this.timeToX(t0 + i * hopSeconds);
-      const y = this.stToY(st);
+      const y = this.hzToY(f);
       if (penDown) ctx.lineTo(x, y);
       else ctx.moveTo(x, y);
       penDown = true;
     }
     ctx.stroke();
     ctx.restore();
+  }
+
+  /** Min/max of a voice range as dashed lines, with the area outside lightly shaded. */
+  private drawGuide(ctx: CanvasRenderingContext2D, r: VoiceRange, c: Colors): void {
+    const plotRight = this.width - MARGIN.right;
+    const top = MARGIN.top;
+    const bottom = this.height - MARGIN.bottom;
+    const place = (hz: number): { y: number; clamped: -1 | 0 | 1 } => {
+      if (this.unit === 'st') {
+        const g = guidePosition(hz, this.track!.medianF0, this.range);
+        return { y: this.stToY(g.st), clamped: g.clamped };
+      }
+      if (hz > this.hzHi) return { y: top, clamped: 1 };
+      if (hz < this.hzLo) return { y: bottom, clamped: -1 };
+      return { y: this.hzToY(hz), clamped: 0 };
+    };
+    const lo = place(r.minF0);
+    const hi = place(r.maxF0);
+    ctx.fillStyle = c.shade;
+    if (hi.clamped !== 1) ctx.fillRect(MARGIN.left, top, plotRight - MARGIN.left, hi.y - top);
+    if (lo.clamped !== -1) ctx.fillRect(MARGIN.left, lo.y, plotRight - MARGIN.left, bottom - lo.y);
+    ctx.strokeStyle = c.trace;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([8, 5]);
+    for (const [p, label] of [
+      [hi, `max ${formatHz(r.maxF0)}`],
+      [lo, `min ${formatHz(r.minF0)}`],
+    ] as const) {
+      const y = Math.round(p.y) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(MARGIN.left, y);
+      ctx.lineTo(plotRight, y);
+      ctx.stroke();
+      const arrow = p.clamped === 1 ? ' ↑' : p.clamped === -1 ? ' ↓' : '';
+      // Label just inside the kept area.
+      this.tag(ctx, label + arrow, plotRight - 6, p === hi ? y + 10 : y - 10, c.trace, 'right');
+    }
+    ctx.setLineDash([]);
+  }
+
+  /** Small text label with a background, so it reads over gridlines. */
+  private tag(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string, align: 'left' | 'right' = 'left'): void {
+    ctx.font = '600 12px system-ui, sans-serif';
+    const w = ctx.measureText(text).width + 10;
+    const left = align === 'left' ? x : x - w;
+    ctx.fillStyle = getComputedStyle(this.trace).getPropertyValue('--surface').trim() || '#fff';
+    ctx.globalAlpha = 0.9;
+    ctx.fillRect(left, y - 9, w, 18);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, left + 5, y);
+    ctx.font = '12px system-ui, sans-serif';
   }
 
   private getColors(): Colors {
@@ -312,6 +474,7 @@ export class TraceView {
         zero: v('--grid-strong'),
         text: v('--text-muted'),
         playhead: v('--playhead'),
+        shade: v('--guide-shade'),
       };
     }
     return this.colors;
@@ -333,10 +496,56 @@ export class TraceView {
     return MARGIN.top + ((this.range - st) / (2 * this.range)) * h;
   }
 
-  // ---- pointer: click (< 4 px) seeks; drag scrubs and seeks on release ----
+  /** y for a pitch in Hz, in the current unit. */
+  private hzToY(hz: number): number {
+    if (this.unit === 'st') return this.stToY(hzToSt(hz, this.track?.medianF0 ?? hz));
+    const h = this.height - MARGIN.top - MARGIN.bottom;
+    const lo = Math.log(this.hzLo);
+    const hi = Math.log(this.hzHi);
+    return MARGIN.top + ((hi - Math.log(hz)) / (hi - lo)) * h;
+  }
 
-  private localX(e: PointerEvent): number {
-    return e.clientX - this.overlay.getBoundingClientRect().left;
+  private f0At(t: number): number {
+    if (!this.track) return NaN;
+    const i = Math.round((t - this.track.frameCenterOffset - TRACE_OFFSET_SECONDS) / this.track.hopSeconds);
+    return i >= 0 && i < this.track.f0.length ? this.track.f0[i] : NaN;
+  }
+
+  // ---- readout (pitch-axis spec §7) ----
+
+  private showReadoutAt(x: number, y: number): void {
+    if (!this.track) return;
+    this.readoutX = Math.min(Math.max(x, MARGIN.left), this.width - MARGIN.right);
+    this.readoutY = y;
+    this.updateReadout();
+  }
+
+  private updateReadout(): void {
+    if (this.readoutX === null || !this.track) return;
+    const t = this.xToTime(this.readoutX);
+    const f = this.f0At(t);
+    const typical = this.track.medianF0;
+    let text = 'no voice here';
+    if (!Number.isNaN(f)) {
+      const st = hzToSt(f, typical);
+      text = `${formatHz(f)} · ${formatSt(st)} ${st >= 0 ? 'above' : 'below'} typical`;
+      if (this.unit === 'notes') text = `${formatHz(f)} (${noteName(f)}) · ${formatSt(st)}`;
+    }
+    this.readout.show(this.readoutX, this.readoutY, `${formatTime(t)} · typical ${formatHz(typical)}`, [
+      { color: this.getColors().trace, dashed: false, text },
+    ]);
+  }
+
+  private hideReadout(): void {
+    this.readoutX = null;
+    this.readout.hide();
+  }
+
+  // ---- pointer: click (< 4 px) seeks; drag scrubs and seeks on release; hold reads ----
+
+  private localPoint(e: PointerEvent): { x: number; y: number } {
+    const r = this.overlay.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
   private onDown(e: PointerEvent): void {
@@ -346,7 +555,7 @@ export class TraceView {
     this.scrubbing = false;
     this.anchor = null;
     if (this.mode === 'select') {
-      const x = this.localX(e);
+      const { x } = this.localPoint(e);
       const sel = this.selection;
       // Grabbing an edge moves that edge; the other one stays put.
       if (sel && Math.abs(x - this.timeToX(sel.start)) <= EDGE_GRAB_PX) this.anchor = sel.end;
@@ -354,16 +563,28 @@ export class TraceView {
       else this.anchor = this.xToTime(x);
     }
     this.overlay.setPointerCapture(e.pointerId);
+    const p = this.localPoint(e);
+    this.readout.pointerDown(e, p, () => this.showReadoutAt(p.x, p.y));
   }
 
   private onMove(e: PointerEvent): void {
+    const p = this.localPoint(e);
     if (e.pointerId !== this.pointerId) {
+      // Hover (mouse/pen with no button down): readout and edge cursor.
+      if (e.pointerType !== 'touch') this.showReadoutAt(p.x, p.y);
       this.hoverCursor(e);
       return;
     }
+    if (this.readout.holding) {
+      this.showReadoutAt(p.x, p.y);
+      return;
+    }
+    this.readout.pointerMove(e);
+    if (this.readout.holdPending) return; // still deciding between hold and drag
+    if (e.pointerType !== 'touch') this.hideReadout();
     if (!this.scrubbing && Math.abs(e.clientX - this.downX) >= VIEW.clickSlopPx) this.scrubbing = true;
     if (!this.scrubbing) return;
-    const t = this.xToTime(this.localX(e));
+    const t = this.xToTime(p.x);
     if (this.mode === 'select' && this.anchor !== null) {
       this.selection = normalizeSpan(this.anchor, t, this.track?.duration ?? 0);
       this.drawTrace();
@@ -375,7 +596,13 @@ export class TraceView {
 
   private onUp(e: PointerEvent): void {
     if (e.pointerId !== this.pointerId) return;
-    const t = this.xToTime(this.localX(e));
+    if (this.readout.pointerUp()) {
+      // A touch-and-hold readout: don't seek or select.
+      this.readoutX = null;
+      this.endPointer(false);
+      return;
+    }
+    const t = this.xToTime(this.localPoint(e).x);
     const dragged = this.scrubbing;
     const selecting = this.mode === 'select';
     this.endPointer(false);
@@ -389,7 +616,7 @@ export class TraceView {
       this.overlay.style.cursor = '';
       return;
     }
-    const x = this.localX(e);
+    const { x } = this.localPoint(e);
     const near = [this.selection.start, this.selection.end].some((t) => Math.abs(x - this.timeToX(t)) <= EDGE_GRAB_PX);
     this.overlay.style.cursor = near ? 'ew-resize' : '';
   }

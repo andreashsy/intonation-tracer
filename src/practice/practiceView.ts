@@ -15,7 +15,8 @@ import { Player } from '../player.ts';
 import { MicRecorder, RecorderError } from '../recorder.ts';
 import { encodeWav, floatToInt16 } from '../wav.ts';
 import { VoiceRangeControls } from '../voiceRange.ts';
-import { type Layer, PracticeChart } from './practiceChart.ts';
+import { getUnit, onUnitChange } from '../units.ts';
+import { type Layer, PracticeChart, type Speaker } from './practiceChart.ts';
 import { AutoStop, runningMedian, speechSpan, TAKE } from './takes.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -90,6 +91,8 @@ export class PracticeView {
   private readonly shiftLabel = $<HTMLSpanElement>('shift-label');
   private readonly shiftReset = $<HTMLButtonElement>('shift-reset');
   private readonly status = $<HTMLSpanElement>('practice-status');
+  private readonly hzForModel = $<HTMLButtonElement>('hz-for-model');
+  private readonly hzForMe = $<HTMLButtonElement>('hz-for-me');
   private readonly chart = new PracticeChart($<HTMLDivElement>('practice-wrap'), $<HTMLCanvasElement>('practice-canvas'));
   private readonly modelPlayer = new Player(this.modelEl);
   private readonly takePlayer = new Player($<HTMLAudioElement>('practice-take-media'));
@@ -137,6 +140,20 @@ export class PracticeView {
       (r) => void this.reanalyzeTakes(r),
       MY_RANGE_KEY,
     );
+    // Pitch-axis aids: shared unit, right axis for Model or Me, and range guides while editing.
+    this.chart.setUnit(getUnit());
+    onUnitChange((u) => this.chart.setUnit(u));
+    this.hzForModel.addEventListener('click', () => this.setHzFor('model'));
+    this.hzForMe.addEventListener('click', () => this.setHzFor('me'));
+    const rows = document.querySelectorAll<HTMLElement>('#practice .pr-range');
+    this.modelRange.onEditing((r) => {
+      if (r) this.setHzFor('model');
+      this.chart.setGuide(r ? { range: r, who: 'model' } : null);
+    }, rows[0]);
+    this.myRange.onEditing((r) => {
+      if (r) this.setHzFor('me');
+      this.chart.setGuide(r ? { range: r, who: 'me' } : null);
+    }, rows[1]);
     this.picker.addEventListener('change', () => void this.selectModel(this.picker.value));
     this.tryBtn.addEventListener('click', () => this.tryAgain());
     this.playModelBtn.addEventListener('click', () => this.togglePlay('model', false));
@@ -160,6 +177,18 @@ export class PracticeView {
     };
     // Keep pitch when slowed (all current browsers default to true; set explicitly).
     (this.modelEl as HTMLMediaElement & { preservesPitch?: boolean }).preservesPitch = true;
+  }
+
+  /** The model's typical pitch in Hz (for the explainer), or NaN. */
+  get modelTypicalHz(): number {
+    return this.model?.medianF0 ?? NaN;
+  }
+
+  /** Which speaker's Hz the right-hand axis shows. */
+  private setHzFor(who: Speaker): void {
+    this.hzForModel.setAttribute('aria-checked', String(who === 'model'));
+    this.hzForMe.setAttribute('aria-checked', String(who === 'me'));
+    this.chart.setHzFor(who);
   }
 
   get busy(): boolean {

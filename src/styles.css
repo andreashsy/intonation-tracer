@@ -15,6 +15,7 @@
   --select: rgba(31, 95, 191, 0.14);
   --band: rgba(31, 95, 191, 0.06);
   --backdrop: rgba(20, 20, 24, 0.35);
+  --guide-shade: rgba(120, 120, 130, 0.12);
   --grid: #e7e5df;
   --grid-strong: #b9b6ad;
   color-scheme: light dark;
@@ -37,6 +38,7 @@
     --select: rgba(106, 168, 255, 0.2);
     --band: rgba(106, 168, 255, 0.08);
     --backdrop: rgba(0, 0, 0, 0.55);
+    --guide-shade: rgba(160, 160, 175, 0.12);
     --grid: #2a2d31;
     --grid-strong: #4a4e55;
   }
@@ -1092,4 +1094,210 @@ button.danger {
 
 .practice-ranges .range-help {
   margin: 0;
+}
+
+/* ---------- Pitch axis aids ---------- */
+.chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.axis-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.axis-label select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 6px;
+}
+
+.axis-help-button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.hz-for {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 0;
+  padding: 3px 10px;
+  font-size: 0.875rem;
+}
+
+#hz-for-model[aria-checked='true'] {
+  background: var(--trace);
+  color: var(--accent-text);
+}
+
+#hz-for-me[aria-checked='true'] {
+  background: var(--trace-b);
+  color: #fff;
+}
+
+/* Readout label */
+.readout {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 6px 10px;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.readout-head {
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.readout-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.readout-swatch {
+  width: 18px;
+  height: 0;
+  border-top: 3px solid;
+  flex: none;
+}
+
+.readout-swatch.dashed {
+  border-top-style: dashed;
+}
+
+/* Touch-and-hold ring: fills over the hold time around the finger */
+.hold-ring {
+  position: absolute;
+  z-index: 3;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(var(--trace) calc(var(--p, 0) * 1turn), transparent 0);
+  -webkit-mask: radial-gradient(circle, transparent 22px, #000 23px);
+  mask: radial-gradient(circle, transparent 22px, #000 23px);
+  opacity: 0.85;
+}
+
+@property --p {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+.hold-ring.filling {
+  animation: hold-fill var(--hold-ms, 400ms) linear forwards;
+}
+
+@keyframes hold-fill {
+  from {
+    --p: 0;
+  }
+  to {
+    --p: 1;
+  }
+}
+
+/* Hint chip in the chart corner until the readout has been used */
+.readout-hint {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 60px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 130px);
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--trace);
+  color: var(--text);
+  font-size: 0.8125rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.readout-hint .link-button {
+  font-size: inherit;
+  white-space: nowrap;
+}
+
+.hint-close {
+  border: 0;
+  background: none;
+  padding: 0 4px;
+  color: var(--text-muted);
+}
+
+/* Explainer */
+.axis-help p {
+  margin: 0 0 10px;
+}
+
+.axis-example table {
+  border-collapse: collapse;
+  margin: 0 0 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.axis-example caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 4px;
+}
+
+.axis-example td {
+  padding: 2px 16px 2px 0;
+}
+
+.axis-example td:last-child {
+  text-align: right;
+  color: var(--trace);
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .readout-hint {
+    right: 8px;
+    left: 64px;
+    max-width: none;
+  }
 }

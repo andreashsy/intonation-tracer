@@ -79,6 +79,28 @@ export class VoiceRangeControls {
     return this.applied;
   }
 
+  /**
+   * Reports the range being edited (typed or picked, before it's applied) while focus is
+   * inside `container`, and null when focus leaves — used to draw range guides on the chart.
+   */
+  onEditing(fn: (r: VoiceRange | null) => void, container: HTMLElement): void {
+    container.addEventListener('focusin', () => fn(this.pending()));
+    container.addEventListener('focusout', () => {
+      // Focus may be moving to another control in the same group; check after it settles.
+      setTimeout(() => {
+        if (!container.contains(document.activeElement)) fn(null);
+      }, 0);
+    });
+    for (const input of [this.min, this.max]) input.addEventListener('input', () => fn(this.pending()));
+    this.preset.addEventListener('change', () => fn(this.pending()));
+  }
+
+  /** The range currently shown in the inputs if it's usable, else the applied one. */
+  private pending(): VoiceRange {
+    const r = { minF0: this.min.valueAsNumber, maxF0: this.max.valueAsNumber };
+    return Number.isFinite(r.minF0) && Number.isFinite(r.maxF0) && r.minF0 > 0 && r.maxF0 > r.minF0 ? r : this.applied;
+  }
+
   /** Shows a range without triggering onChange (e.g. the range a saved model was traced with). */
   set(r: VoiceRange): void {
     this.applied = { minF0: r.minF0, maxF0: r.maxF0 };

@@ -51,6 +51,9 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
 | `src/practice/practiceChart.ts` | Layered chart: model, take, previous-take ghost, live line |
 | `src/practice/practiceView.ts` | Practice screen: the try-again loop, take strip, starring, playback, keys |
 | `src/analysisClient.ts` | One-off analysis in its own worker (for takes) |
+| `src/pitchAxis.ts` | Hz ↔ semitones, note names, axis ticks and label formatting |
+| `src/units.ts` | Shared axis unit setting (Semitones / Hz / Notes) |
+| `src/readout.ts` | Pitch readout: hover, touch-and-hold ring, hint chip |
 | `src/main.ts` | Wiring, load/cancel flow, selection, rAF loop, global keyboard handler |
 
 ## Phrase library (M1) and Practice (M2)
@@ -73,6 +76,13 @@ a live pitch trace scrolls past with the timer running. **Stop** turns the recor
 seeking and voice range, just like an uploaded file; **Save recording** downloads it. Up to 10 minutes (5 on phones).
 Echo cancellation, noise suppression and auto gain are turned off because they distort pitch.
 Microphone access needs https (GitHub Pages is) or `localhost`.
+
+## Reading the chart: semitones and Hz
+
+- The left axis is in **semitones from the speaker's typical pitch** ("typical" = 0 st; 12 st = 1 octave = double the Hz). The right axis shows the same gridlines in **Hz**. In Practice, **Right axis for: Model | Me** picks whose Hz scale is shown.
+- **Hover** over the trace (or **touch and hold** on a phone; a ring fills while you hold) to read the exact Hz and st at that moment. In Practice it shows the model and your take side by side.
+- While you edit a **voice range**, its Min and Max are drawn on the chart and the area outside is shaded.
+- **Axis** switches between **Semitones**, **Hz** and musical **Notes** (remembered). **ⓘ** explains how they relate, using the clip's own numbers.
 
 ## Video
 
@@ -112,12 +122,13 @@ In DevTools → Network, `pitch.worker-<hash>.js` should load with status 200 fr
 
 ## Status
 
-- Unit tests: 61 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop).
+- Unit tests: 69 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop, Hz/semitone/note conversions and axis ticks).
 - Benchmark: 60 s analyzed in about 0.9 s on the build machine (budget 2 s).
 - Smoke-tested in headless Chromium with a synthetic 20 s WAV: load, unsupported file, no-speech file, play/pause via Space without double-toggle, arrow jumps, click and drag seeking, seek bar, cancel then reload, phone width, dark mode. No console errors.
 - Video tested in headless Chromium with a portrait YouTube Short, a landscape test video and an audio-only file, at desktop and phone widths: play button, seek bar, trace clicks, video click and Space all keep video and playhead in sync.
 - Recording tested in headless Chromium with a fake microphone: live trace, level meter, Stop → trace and playback, Save downloads a valid WAV, Cancel, too-short recording, no microphone.
 - Library tested in headless Chromium: select, save (one video shared by two phrases), record and link a take, library sizes, remove video, delete, reload.
+- Chart aids tested in headless Chromium: hover readout values, touch-and-hold via real touch events (ring, readout, no seek; quick tap still seeks), range guides, Hz/Notes axes, explainer, Practice Model/Me axis.
 - Practice tested in headless Chromium with a fake microphone: full try-again loop with auto-stop, live line, playback at 0.75×, shifting, starring an unsaved model's take, un-starring, keys, library entry points, reload.
 - Voice range tested in headless Chromium on a real music-backed clip: switching presets mid-playback, custom values, invalid input, keyboard isolation, remembered setting.
 

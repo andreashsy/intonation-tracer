@@ -16,7 +16,9 @@ import { getStatus, setStatus, subscribe } from './state.ts';
 import { TraceView } from './traceView.ts';
 import type { PitchTrack, WorkerRequest, WorkerResponse } from './types.ts';
 import { VoiceRangeControls } from './voiceRange.ts';
+import { formatHz, stToHz } from './pitchAxis.ts';
 import { PracticeView } from './practice/practiceView.ts';
+import { bindUnitMenus, getUnit, onUnitChange } from './units.ts';
 import { encodeWav } from './wav.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -86,6 +88,11 @@ const traceView = new TraceView(ui.traceWrap, ui.traceCanvas, ui.overlayCanvas, 
   onSelect: (span) => setSelection(span, false),
   onPick: (t) => setSelection(phraseAt(bands, t)),
 });
+// Axis unit (pitch-axis spec §3) and voice range guides while editing (§6).
+traceView.setUnit(getUnit());
+onUnitChange((u) => traceView.setUnit(u));
+bindUnitMenus();
+
 const seekBar = new SeekBar(ui.seek, ui.timeCurrent, ui.timeTotal, (t) => seekTo(t));
 
 // ---- loading ----
@@ -524,6 +531,36 @@ const library = new LibraryPanel({
   changed: (items) => practiceView.setItems(items),
 });
 ui.practicePhrase.addEventListener('click', () => void practiceCurrentPhrase());
+voiceRange.onEditing((r) => traceView.setRangeGuide(r), document.querySelector<HTMLElement>('#viewer .settings')!);
+
+// ---- semitones and Hz explainer (pitch-axis spec §8) ----
+
+const axisHelp = $<HTMLDialogElement>('axis-help');
+function openAxisHelp(): void {
+  // Worked example from what's on screen: the model in Practice, else the loaded clip.
+  const typical = getStatus().kind === 'practice' ? practiceView.modelTypicalHz : traceView.typicalHz;
+  const t = Number.isFinite(typical) ? typical : 200;
+  const ex = $<HTMLDivElement>('axis-example');
+  const rows: [string, number][] = [['+12 st (1 octave up)', 12], ['+6 st', 6], ['typical (0 st)', 0], ['−6 st', -6], ['−12 st (1 octave down)', -12]];
+  const table = document.createElement('table');
+  const cap = document.createElement('caption');
+  cap.textContent = Number.isFinite(typical) ? `In this clip, typical = ${formatHz(t)}:` : `For example, if typical = ${formatHz(t)}:`;
+  table.append(cap);
+  for (const [label, st] of rows) {
+    const tr = document.createElement('tr');
+    const a = document.createElement('td');
+    a.textContent = label;
+    const b = document.createElement('td');
+    b.textContent = formatHz(stToHz(st, t));
+    tr.append(a, b);
+    table.append(tr);
+  }
+  ex.replaceChildren(table);
+  axisHelp.showModal();
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>('.axis-help-button')) b.addEventListener('click', openAxisHelp);
+document.addEventListener('open-axis-help', openAxisHelp);
+$<HTMLButtonElement>('axis-help-close').addEventListener('click', () => axisHelp.close());
 
 void libraryAvailable().then((ok) => {
   if (ok) void library.refresh();
