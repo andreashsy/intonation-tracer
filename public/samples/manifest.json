@@ -1,3 +1,11 @@
 {
-  "samples": []
+  "samples": [
+    {
+      "file": "ko/leesejin-01.wav",
+      "name": "세계 인권 선언 낭독 (1)",
+      "language": "ko",
+      "voiceRange": "lower",
+      "credit": "Read by LeeSeJin · LibriVox (public domain)"
+    }
+  ]
 }

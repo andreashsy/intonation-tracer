@@ -20,6 +20,8 @@ export interface Phrase {
   sourceId?: string;
   sourceStart: number;
   sourceName: string;
+  /** Built-in samples only: who to credit (speaker, source). */
+  credit?: string;
 }
 
 export interface Source {

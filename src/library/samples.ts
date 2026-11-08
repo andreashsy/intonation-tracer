@@ -18,6 +18,8 @@ export interface SampleEntry {
   language: string;
   /** "any" | "lower" | "higher" | { minF0, maxF0 }; defaults to "any". */
   voiceRange?: 'any' | 'lower' | 'higher' | VoiceRange;
+  /** Optional credit shown with the sample, e.g. "Read by LeeSeJin · LibriVox (public domain)". */
+  credit?: string;
 }
 
 export function isSampleId(id: string | undefined): boolean {
@@ -43,6 +45,7 @@ export function parseManifest(json: unknown): SampleEntry[] {
       e.name.trim().length > 0 &&
       typeof e.language === 'string' &&
       e.language.trim().length > 0 &&
+      (e.credit === undefined || typeof e.credit === 'string') &&
       !seen.has(e.file);
     if (ok) seen.add(e.file);
     return ok;
@@ -107,5 +110,6 @@ export async function loadSample(e: SampleEntry): Promise<Phrase> {
     voiceRange: range,
     sourceStart: 0,
     sourceName: name,
+    credit: e.credit?.trim() || undefined,
   };
 }

@@ -215,7 +215,7 @@ export class LibraryPanel {
 
     const size = document.createElement('div');
     size.className = 'lib-size';
-    const parts = [sample ? 'Not stored in your library' : `Audio ${formatBytes(p.audio.size)}`];
+    const parts = [sample ? (p.credit ?? 'Not stored in your library') : `Audio ${formatBytes(p.audio.size)}`];
     if (info.videoSize) {
       parts.push(
         `Video ${formatBytes(info.videoSize)}${info.videoSharedBy > 1 ? `, shared by ${info.videoSharedBy} phrases` : ''}`,

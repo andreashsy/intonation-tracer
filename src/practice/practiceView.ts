@@ -42,6 +42,7 @@ interface Model extends Trace {
   mediaStart: number;
   hasVideo: boolean;
   voiceRange: VoiceRange;
+  credit?: string;
   /** 16 kHz audio of just the phrase, decoded on first re-analysis. */
   pcm?: Float32Array;
   /** Audio to decode for re-analysis (saved phrase audio); unsaved models slice the clip instead. */
@@ -257,7 +258,7 @@ export class PracticeView {
     this.rangeSeq++; // drop any re-analysis still running for the previous model
     if (this.model) this.modelRange.set(this.model.voiceRange);
     this.modelMeta.textContent = this.model
-      ? [formatTime(this.model.duration), this.model.language].filter(Boolean).join(' · ')
+      ? [formatTime(this.model.duration), this.model.language, this.model.credit].filter(Boolean).join(' · ')
       : '';
     if (this.model) {
       this.modelUrl = URL.createObjectURL(this.model.media);
@@ -314,6 +315,7 @@ export class PracticeView {
       hasVideo: !!src && src.type.startsWith('video/'),
       voiceRange: { ...p.voiceRange },
       audio: p.audio,
+      credit: p.credit,
     };
   }
 

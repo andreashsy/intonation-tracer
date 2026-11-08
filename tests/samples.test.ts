@@ -17,6 +17,16 @@ describe('sample manifest', () => {
     assert.deepEqual(list.map((e) => e.name), ['Question']);
   });
 
+  it('accepts an optional text credit', () => {
+    const list = parseManifest({
+      samples: [
+        { file: 'ko/a.wav', name: 'A', language: 'ko', credit: 'Read by LeeSeJin' },
+        { file: 'ko/b.wav', name: 'B', language: 'ko', credit: 42 },
+      ],
+    });
+    assert.deepEqual(list.map((e) => e.credit), ['Read by LeeSeJin']);
+  });
+
   it('treats a missing or empty manifest as no samples', () => {
     assert.deepEqual(parseManifest({ samples: [] }), []);
     assert.deepEqual(parseManifest({}), []);
