@@ -72,13 +72,44 @@ export const VIEW = {
 export const TRACE_OFFSET_SECONDS = 0;
 
 export interface Limits {
+  /** Uploads are limited by file size (M0 spec §5). */
   maxBytes: number;
-  maxSeconds: number;
-  label: string;
+  sizeLabel: string;
+  /** Microphone recordings are limited by length. */
+  maxRecordSeconds: number;
+  recordLabel: string;
+  /**
+   * Safety ceiling, not a product limit: analysis keeps the audio decoded at 16 kHz in memory,
+   * peaking around 15 MB per minute (decoded buffer + mono copy + worker copy). A small file can
+   * still be hours long (a 200 MB MP3 is ~3 h), which would crash the tab, so longer files are
+   * refused with an explanation. ~60 min ≈ 0.9 GB on desktop, ~20 min ≈ 0.3 GB on phones.
+   */
+  maxAnalysisSeconds: number;
 }
 
-export const DESKTOP_LIMITS: Limits = { maxBytes: 200 * 1024 * 1024, maxSeconds: 10 * 60, label: '10 minutes' };
-export const MOBILE_LIMITS: Limits = { maxBytes: 100 * 1024 * 1024, maxSeconds: 5 * 60, label: '5 minutes' };
+const MB = 1024 * 1024;
+
+export const DESKTOP_LIMITS: Limits = {
+  maxBytes: 200 * MB,
+  sizeLabel: '200 MB',
+  maxRecordSeconds: 10 * 60,
+  recordLabel: '10 minutes',
+  maxAnalysisSeconds: 60 * 60,
+};
+export const MOBILE_LIMITS: Limits = {
+  maxBytes: 100 * MB,
+  sizeLabel: '100 MB',
+  maxRecordSeconds: 5 * 60,
+  recordLabel: '5 minutes',
+  maxAnalysisSeconds: 20 * 60,
+};
+
+/** Message for a file too long to analyze on this device. */
+export function tooLongMessage(seconds: number, limits: Limits): string {
+  const mins = Math.round(seconds / 60);
+  const max = Math.round(limits.maxAnalysisSeconds / 60);
+  return `This file is about ${mins} minutes long, too long to analyze on this device (up to about ${max} minutes). Try a shorter clip, or trim it first.`;
+}
 
 export function currentLimits(): Limits {
   const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;

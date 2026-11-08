@@ -76,7 +76,7 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
 Press **Record with microphone** (or **Record** in the top bar) and allow the microphone. The level meter comes
 alive so you can check your mic, and recording only begins when you press **● Start recording**. While you speak,
 a live pitch trace scrolls past with the timer running. **Stop** turns the recording into a WAV and shows the full trace with playback,
-seeking and voice range, just like an uploaded file; **Save recording** downloads it. Up to 10 minutes (5 on phones).
+seeking and voice range, just like an uploaded file; **Save recording** downloads it. Recordings can be up to 10 minutes (5 on phones); uploaded files up to 200 MB (100 MB on phones).
 Echo cancellation, noise suppression and auto gain are turned off because they distort pitch.
 Microphone access needs https (GitHub Pages is) or `localhost`.
 
@@ -144,7 +144,7 @@ In DevTools → Network, `pitch.worker-<hash>.js` should load with status 200 fr
 
 ## Status
 
-- Unit tests: 75 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop, Hz/semitone/note conversions and axis ticks).
+- Unit tests: 77 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing, take trimming and auto-stop, Hz/semitone/note conversions and axis ticks).
 - Benchmark: 60 s analyzed in about 0.9 s on the build machine (budget 2 s).
 - Smoke-tested in headless Chromium with a synthetic 20 s WAV: load, unsupported file, no-speech file, play/pause via Space without double-toggle, arrow jumps, click and drag seeking, seek bar, cancel then reload, phone width, dark mode. No console errors.
 - Video tested in headless Chromium with a portrait YouTube Short, a landscape test video and an audio-only file, at desktop and phone widths: play button, seek bar, trace clicks, video click and Space all keep video and playhead in sync.

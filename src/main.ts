@@ -1,4 +1,4 @@
-import { ANALYSIS, currentLimits, type VoiceRange } from './config.ts';
+import { ANALYSIS, currentLimits, tooLongMessage, type VoiceRange } from './config.ts';
 import { DecodeError, decodeToMono } from './decoder.ts';
 import { looksLikeMedia, setupFileInput } from './fileInput.ts';
 import { formatTime, spokenTime } from './format.ts';
@@ -121,8 +121,8 @@ let pendingReject: ((err: Error) => void) | null = null;
 
 class Cancelled extends Error {}
 
-ui.limitText.textContent = currentLimits().label;
-ui.recLimit.textContent = currentLimits().label;
+ui.limitText.textContent = currentLimits().sizeLabel;
+ui.recLimit.textContent = currentLimits().recordLabel;
 
 setupFileInput(ui.dropZone, ui.fileInput, (file) => void loadFile(file));
 ui.loadAnother.addEventListener('click', () => ui.fileInput.click());
@@ -139,7 +139,7 @@ async function loadFile(file: File, fromMic = false): Promise<void> {
   const limits = currentLimits();
   if (!looksLikeMedia(file)) return fail("This file's format isn't supported. Try MP3, WAV, M4A or MP4.");
   if (file.size > limits.maxBytes) {
-    return fail(`Please use a file under ${Math.round(limits.maxBytes / 1024 / 1024)} MB.`);
+    return fail(`Please use a file under ${limits.sizeLabel}. This one is ${Math.round(file.size / 1024 / 1024)} MB.`);
   }
 
   ui.fileName.textContent = file.name;
@@ -150,15 +150,17 @@ async function loadFile(file: File, fromMic = false): Promise<void> {
     objectUrl = URL.createObjectURL(file);
     const metaDuration = await player.load(objectUrl);
     if (token !== loadToken) return;
-    if (Number.isFinite(metaDuration) && metaDuration > limits.maxSeconds) {
-      return fail(`Please use a file under ${limits.label}.`);
+    // Uploads are limited by size; this only stops files too long to analyze without crashing.
+    if (Number.isFinite(metaDuration) && metaDuration > limits.maxAnalysisSeconds) {
+      return fail(tooLongMessage(metaDuration, limits));
     }
 
     // 2. Decode to 16 kHz mono.
     const pcm = await decodeToMono(file, ANALYSIS.sampleRate);
     if (token !== loadToken) return;
-    if (pcm.length / ANALYSIS.sampleRate > limits.maxSeconds) {
-      return fail(`Please use a file under ${limits.label}.`);
+    // Some files (e.g. WebM) only reveal their length after decoding.
+    if (pcm.length / ANALYSIS.sampleRate > limits.maxAnalysisSeconds) {
+      return fail(tooLongMessage(pcm.length / ANALYSIS.sampleRate, limits));
     }
 
     // 3. Analyze in the worker, using the current voice range.
@@ -393,7 +395,7 @@ function recordingFrame(): void {
   ui.levelFill.classList.toggle('hot', levelDb > -3);
   levelDb -= 1.5;
   // Stop just short of the limit so the file passes the length check.
-  if (seconds >= currentLimits().maxSeconds - 0.25) stopRecording();
+  if (seconds >= currentLimits().maxRecordSeconds - 0.25) stopRecording();
 }
 
 // ---- playback ----
