@@ -1,9 +1,14 @@
+import { CompareView } from './compare/compareView.ts';
 import { ANALYSIS, currentLimits, type VoiceRange } from './config.ts';
 import { DecodeError, decodeToMono } from './decoder.ts';
 import { looksLikeMedia, setupFileInput } from './fileInput.ts';
 import { formatTime, spokenTime } from './format.ts';
 import { LivePitch } from './livePitch.ts';
 import { LiveView } from './liveView.ts';
+import { getPhrase, getSource, LibraryFull, libraryAvailable, type Phrase, savePhrase } from './library/db.ts';
+import { LibraryPanel } from './library/libraryPanel.ts';
+import { SaveDialog } from './library/saveDialog.ts';
+import { detectPhrases, PHRASE, phraseAt, slicePcm, sliceTrace, type Span } from './phrases.ts';
 import { Player } from './player.ts';
 import { MicRecorder, RecorderError } from './recorder.ts';
 import { SeekBar } from './seekBar.ts';
@@ -11,7 +16,7 @@ import { getStatus, setStatus, subscribe } from './state.ts';
 import { TraceView } from './traceView.ts';
 import type { PitchTrack, WorkerRequest, WorkerResponse } from './types.ts';
 import { VoiceRangeControls } from './voiceRange.ts';
-import { encodeWav } from './wav.ts';
+import { encodeWav, floatToInt16 } from './wav.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -54,6 +59,16 @@ const ui = {
   stopRecording: $<HTMLButtonElement>('stop-recording'),
   cancelRecording: $<HTMLButtonElement>('cancel-recording'),
   recLimit: $<HTMLSpanElement>('rec-limit'),
+  selectMode: $<HTMLButtonElement>('select-mode'),
+  selectionBar: $<HTMLDivElement>('selection-bar'),
+  selectionLabel: $<HTMLSpanElement>('selection-label'),
+  playPhrase: $<HTMLButtonElement>('play-phrase'),
+  savePhraseButton: $<HTMLButtonElement>('save-phrase'),
+  clearSelection: $<HTMLButtonElement>('clear-selection'),
+  selectionHint: $<HTMLSpanElement>('selection-hint'),
+  openLibrary: $<HTMLButtonElement>('open-library'),
+  compare: $<HTMLElement>('compare'),
+  closeCompare: $<HTMLButtonElement>('close-compare'),
 };
 
 const player = new Player(ui.media);
@@ -64,6 +79,8 @@ const traceView = new TraceView(ui.traceWrap, ui.traceCanvas, ui.overlayCanvas, 
   onScrub: (t) => {
     scrubTime = t;
   },
+  onSelect: (span) => setSelection(span, false),
+  onPick: (t) => setSelection(phraseAt(bands, t)),
 });
 const seekBar = new SeekBar(ui.seek, ui.timeCurrent, ui.timeTotal, (t) => seekTo(t));
 
@@ -75,6 +92,12 @@ let objectUrl: string | null = null;
 /** Decoded 16 kHz mono audio of the current file, kept so a range change can re-analyze it. */
 let currentPcm: Float32Array | null = null;
 let currentName = '';
+/** The loaded file, its trace, and phrase selection state (M1). */
+let currentFile: File | null = null;
+let currentTrack: PitchTrack | null = null;
+let selection: Span | null = null;
+let bands: Span[] = [];
+let selectMode = false;
 /** True when the loaded clip came from the microphone (offers "Save recording"). */
 let currentIsRecording = false;
 
@@ -99,6 +122,7 @@ async function loadFile(file: File, fromMic = false): Promise<void> {
   stopWorker();
   resetMedia();
   currentIsRecording = fromMic;
+  currentFile = file;
 
   const limits = currentLimits();
   if (!looksLikeMedia(file)) return fail("This file's format isn't supported. Try MP3, WAV, M4A or MP4.");
@@ -199,6 +223,10 @@ function resetMedia(): void {
   objectUrl = null;
   currentPcm = null;
   currentIsRecording = false;
+  currentFile = null;
+  currentTrack = null;
+  selection = null;
+  bands = [];
   scrubTime = null;
   traceView.clear();
 }
@@ -239,6 +267,15 @@ function showTrack(name: string, track: PitchTrack, keepView = false): void {
     }
   }
   traceView.setTrack(track, keepView);
+  currentTrack = track;
+  bands = detectPhrases(track);
+  traceView.setBands(bands);
+  if (!keepView) {
+    setSelectMode(false); // each new clip starts in normal (seek) mode
+    setSelection(null);
+  } else {
+    updateSelectionUi();
+  }
   ui.noVoice.hidden = !Number.isNaN(track.medianF0);
   ui.noVoice.textContent =
     voiceRange.range.minF0 === ANALYSIS.minF0 && voiceRange.range.maxF0 === ANALYSIS.maxF0
@@ -337,9 +374,178 @@ function seekTo(t: number): void {
   traceView.reveal(t);
 }
 
-ui.play.addEventListener('click', () => player.toggle());
+/** Play/pause; with a phrase selected, plays just that phrase (from its start if outside it). */
+function togglePlay(): void {
+  if (!player.playing && selection) {
+    const t = player.time();
+    if (t < selection.start || t >= selection.end - 0.05) player.seek(selection.start);
+  }
+  player.toggle();
+}
+
+ui.play.addEventListener('click', () => togglePlay());
 // Tapping the video plays/pauses too, like most players.
-ui.media.addEventListener('click', () => player.toggle());
+ui.media.addEventListener('click', () => togglePlay());
+
+// ---- phrase selection (M1 spec §4) ----
+
+ui.selectMode.addEventListener('click', () => setSelectMode(!selectMode));
+ui.playPhrase.addEventListener('click', () => {
+  if (!selection) return;
+  player.seek(selection.start);
+  traceView.reveal(selection.start);
+  void player.play();
+});
+ui.clearSelection.addEventListener('click', () => setSelection(null));
+ui.savePhraseButton.addEventListener('click', () => void saveSelection());
+
+function setSelectMode(on: boolean): void {
+  selectMode = on;
+  ui.selectMode.setAttribute('aria-pressed', String(on));
+  traceView.setMode(on ? 'select' : 'seek');
+  updateSelectionUi();
+}
+
+function setSelection(span: Span | null, final = true): void {
+  selection = span;
+  if (final) traceView.setSelection(span);
+  if (span && final) traceView.reveal(span.start);
+  ui.selectionHint.textContent = '';
+  updateSelectionUi();
+}
+
+function wholeClipSavable(): boolean {
+  return !!currentTrack && currentTrack.duration <= PHRASE.maxSeconds;
+}
+
+function updateSelectionUi(): void {
+  const show = selectMode || !!selection;
+  ui.selectionBar.hidden = !show;
+  ui.playPhrase.hidden = !selection;
+  ui.clearSelection.hidden = !selection;
+  if (selection) {
+    const len = selection.end - selection.start;
+    ui.selectionLabel.textContent = `Phrase ${formatTime(selection.start)}–${formatTime(selection.end)} (${len.toFixed(1)} s)`;
+    ui.savePhraseButton.textContent = 'Save phrase…';
+    ui.savePhraseButton.hidden = false;
+  } else {
+    ui.selectionLabel.textContent = bands.length
+      ? 'Click a phrase on the trace, or drag across it.'
+      : 'Drag across the trace to select a phrase.';
+    ui.savePhraseButton.textContent = 'Save whole clip…';
+    ui.savePhraseButton.hidden = !wholeClipSavable();
+  }
+}
+
+function baseName(name: string): string {
+  return name.replace(/\.[^.]+$/, '');
+}
+
+function newId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function saveSelection(): Promise<void> {
+  if (!currentPcm || !currentTrack || !currentFile) return;
+  const span: Span | null = selection ?? (wholeClipSavable() ? { start: 0, end: currentTrack.duration } : null);
+  if (!span) return;
+  player.pause();
+  const file = currentFile;
+  const track = currentTrack;
+  const pcmAll = currentPcm;
+  const hasVideo = !ui.videoWrap.hidden;
+  const items = library.phrases;
+  const whole = !selection;
+  const defaultName = currentIsRecording
+    ? `My take ${new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`
+    : whole
+      ? baseName(file.name)
+      : `${baseName(file.name)} ${formatTime(span.start)}`;
+  let answer = await saveDialog.ask({
+    defaultName,
+    summary: `${whole ? 'Whole clip' : `${formatTime(span.start)}–${formatTime(span.end)}`} (${(span.end - span.start).toFixed(1)} s) from ${file.name}`,
+    defaultRole: currentIsRecording ? 'me' : 'model',
+    videoSize: hasVideo ? file.size : 0,
+    models: items.filter((i) => i.phrase.role === 'model').map((i) => ({ id: i.phrase.id, name: i.phrase.name })),
+    languages: [...new Set(items.map((i) => i.phrase.language).filter((l): l is string => !!l))],
+  });
+  while (answer) {
+    const t = sliceTrace(track, span);
+    const pcm = slicePcm(pcmAll, ANALYSIS.sampleRate, span);
+    const phrase: Phrase = {
+      id: newId(),
+      name: answer.name,
+      role: answer.role,
+      language: answer.language,
+      modelId: answer.modelId,
+      createdAt: Date.now(),
+      duration: pcm.length / ANALYSIS.sampleRate,
+      audio: encodeWav([floatToInt16(pcm)], ANALYSIS.sampleRate),
+      f0: t.f0,
+      hopSeconds: track.hopSeconds,
+      frameCenterOffset: t.frameCenterOffset,
+      medianF0: t.medianF0,
+      voiceRange: { ...voiceRange.range },
+      sourceStart: span.start,
+      sourceName: file.name,
+    };
+    try {
+      await savePhrase(phrase, answer.keepVideo ? file : undefined);
+      saveDialog.close();
+      await library.refresh();
+      ui.selectionHint.textContent = `Saved "${answer.name}" to the library.`;
+      return;
+    } catch (err) {
+      answer = await saveDialog.showError(
+        err instanceof LibraryFull
+          ? "Couldn't save: this browser is out of storage space. Untick \"Keep video\", or remove videos or delete phrases in the library."
+          : "Couldn't save to the library in this browser.",
+      );
+    }
+  }
+}
+
+// ---- library and compare (M1 spec §7–§8) ----
+
+const saveDialog = new SaveDialog();
+const compareView = new CompareView();
+const library = new LibraryPanel({
+  open: (id) => void openPhrase(id),
+  compare: (id) => void openCompare(id),
+  changed: (items) => compareView.setItems(items),
+});
+
+void libraryAvailable().then((ok) => {
+  if (ok) void library.refresh();
+  else library.disable("The library isn't available in this browser window (private browsing or storage blocked).");
+});
+
+async function openPhrase(id: string): Promise<void> {
+  if (getStatus().kind === 'compare') closeCompare();
+  const p = await getPhrase(id);
+  if (!p) return;
+  const src = p.sourceId ? await getSource(p.sourceId) : undefined;
+  if (src) {
+    await loadFile(new File([src.blob], src.name, { type: src.type, lastModified: src.lastModified }));
+    if (getStatus().kind !== 'ready') return;
+    setSelection({ start: p.sourceStart, end: p.sourceStart + p.duration });
+    seekTo(p.sourceStart);
+  } else {
+    await loadFile(new File([p.audio], `${p.name}.wav`, { type: 'audio/wav' }));
+  }
+}
+
+async function openCompare(id: string): Promise<void> {
+  player.pause();
+  setStatus({ kind: 'compare' });
+  await compareView.openWith(id);
+}
+
+function closeCompare(): void {
+  compareView.close();
+  setStatus(currentTrack ? { kind: 'ready' } : { kind: 'empty' });
+}
+ui.closeCompare.addEventListener('click', () => closeCompare());
 
 function syncPlayButton(): void {
   const playing = player.playing;
@@ -354,7 +560,10 @@ function frame(): void {
     if (scrubTime === null && player.playing) traceView.follow(t);
     traceView.drawPlayhead(t);
     seekBar.update(t);
+    // A selected phrase plays to its end, then stops.
+    if (selection && scrubTime === null && player.playing && t >= selection.end) player.pause();
   }
+  if (getStatus().kind === 'compare') compareView.tick();
   if (getStatus().kind === 'recording') recordingFrame();
   requestAnimationFrame(frame);
 }
@@ -366,16 +575,19 @@ document.addEventListener(
   'keydown',
   (e) => {
     if (getStatus().kind !== 'ready') return;
-    if (e.target === ui.fileInput || e.metaKey || e.ctrlKey || e.altKey) return;
-    // Let the range menu and number boxes keep their own keys (typing, arrows, Space).
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'SELECT' || (target instanceof HTMLInputElement && target.type === 'number')) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || library.isOpen || document.querySelector('dialog[open]')) return;
+    // Let menus and text/number boxes keep their own keys (typing, arrows, Space).
+    if (ownsKeys(e.target)) return;
     const now = player.time();
     const jump = e.shiftKey ? 10 : 2;
     switch (e.key) {
       case ' ':
         e.preventDefault();
-        if (!e.repeat) player.toggle();
+        if (!e.repeat) togglePlay();
+        break;
+      case 'Escape':
+        if (selection) setSelection(null);
+        else if (selectMode) setSelectMode(false);
         break;
       case 'ArrowLeft':
         e.preventDefault();
@@ -402,12 +614,18 @@ document.addEventListener(
 document.addEventListener(
   'keyup',
   (e) => {
-    const target = e.target as HTMLElement;
-    const ownsKeys = target.tagName === 'SELECT' || (target instanceof HTMLInputElement && target.type === 'number');
-    if (e.key === ' ' && getStatus().kind === 'ready' && !ownsKeys) e.preventDefault();
+    if (library.isOpen || document.querySelector('dialog[open]')) return;
+    if (e.key === ' ' && getStatus().kind === 'ready' && !ownsKeys(e.target)) e.preventDefault();
   },
   { capture: true },
 );
+
+/** Elements that need their own keys: menus and any input except sliders. */
+function ownsKeys(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return true;
+  return target instanceof HTMLInputElement && target.type !== 'range';
+}
 
 // ---- status → UI ----
 
@@ -416,6 +634,10 @@ subscribe((s) => {
   ui.progress.hidden = s.kind !== 'loading';
   ui.viewer.hidden = s.kind !== 'ready';
   ui.recorder.hidden = s.kind !== 'recording';
+  ui.compare.hidden = s.kind !== 'compare';
+  ui.openLibrary.hidden = s.kind === 'loading' || s.kind === 'recording';
+  if (s.kind === 'ready') ui.fileName.textContent = currentName;
+  else if (s.kind === 'empty' || s.kind === 'compare') ui.fileName.textContent = 'Intonation Tracer';
   ui.micWait.hidden = s.kind !== 'recording' || s.live;
   ui.actions.hidden = s.kind !== 'ready';
 

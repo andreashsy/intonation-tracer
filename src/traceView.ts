@@ -3,6 +3,7 @@
 // the overlay layer (playhead) redraws every animation frame.
 
 import { TRACE_OFFSET_SECONDS, VIEW } from './config.ts';
+import { normalizeSpan, type Span } from './phrases.ts';
 import type { PitchTrack } from './types.ts';
 
 const MARGIN = { left: 56, right: 12, top: 12, bottom: 28 };
@@ -12,10 +13,18 @@ export interface TraceViewCallbacks {
   onSeek(t: number): void;
   /** Scrubbing preview time, or null when scrubbing ends. */
   onScrub(t: number | null): void;
+  /** Select mode: the selection changed (null = cleared). `final` is true on pointer release. */
+  onSelect(span: Span | null, final: boolean): void;
+  /** Select mode: a click (no drag) at this time. */
+  onPick(t: number): void;
 }
+
+const EDGE_GRAB_PX = 8;
 
 interface Colors {
   trace: string;
+  select: string;
+  band: string;
   grid: string;
   zero: string;
   text: string;
@@ -34,11 +43,16 @@ export class TraceView {
   private height = 0;
   private dpr = 1;
   private colors: Colors | null = null;
+  private mode: 'seek' | 'select' = 'seek';
+  private selection: Span | null = null;
+  private bands: Span[] = [];
 
   // Pointer state
   private pointerId: number | null = null;
   private downX = 0;
   private scrubbing = false;
+  /** Select-mode drag: the fixed end of the selection being made. */
+  private anchor: number | null = null;
 
   constructor(wrap: HTMLElement, trace: HTMLCanvasElement, overlay: HTMLCanvasElement, cb: TraceViewCallbacks) {
     this.trace = trace;
@@ -63,6 +77,24 @@ export class TraceView {
 
   get start(): number {
     return this.viewStart;
+  }
+
+  /** 'select': click picks a phrase, drag selects a span. 'seek': click/drag seek. */
+  setMode(mode: 'seek' | 'select'): void {
+    this.mode = mode;
+    this.overlay.classList.toggle('selecting', mode === 'select');
+    this.drawTrace();
+  }
+
+  /** Detected phrases, shown as faint bands in select mode. */
+  setBands(bands: Span[]): void {
+    this.bands = bands;
+    this.drawTrace();
+  }
+
+  setSelection(span: Span | null): void {
+    this.selection = span;
+    this.drawTrace();
   }
 
   /** keepView: leave the visible window where it is (used when re-analyzing the same clip). */
@@ -92,6 +124,8 @@ export class TraceView {
 
   clear(): void {
     this.track = null;
+    this.selection = null;
+    this.bands = [];
     this.semis = new Float32Array(0);
     this.drawTrace();
     this.drawPlayhead(NaN);
@@ -205,6 +239,33 @@ export class TraceView {
     }
 
     // The trace: connected segments, broken at unvoiced frames.
+    // Phrase bands (select mode) and the selection, behind the trace.
+    const plotTop = MARGIN.top;
+    const shade = (span: Span, color: string) => {
+      const x0 = Math.max(MARGIN.left, this.timeToX(span.start));
+      const x1 = Math.min(plotRight, this.timeToX(span.end));
+      if (x1 <= x0) return;
+      ctx.fillStyle = color;
+      ctx.fillRect(x0, plotTop, x1 - x0, plotBottom - plotTop);
+    };
+    if (this.mode === 'select') for (const b of this.bands) shade(b, c.band);
+    if (this.selection) {
+      shade(this.selection, c.select);
+      ctx.strokeStyle = c.trace;
+      ctx.lineWidth = 2;
+      for (const edge of [this.selection.start, this.selection.end]) {
+        const x = this.timeToX(edge);
+        if (x < MARGIN.left || x > plotRight) continue;
+        ctx.beginPath();
+        ctx.moveTo(x, plotTop);
+        ctx.lineTo(x, plotBottom);
+        ctx.stroke();
+        // Grab handle
+        ctx.fillStyle = c.trace;
+        ctx.fillRect(x - 4, plotTop + (plotBottom - plotTop) / 2 - 12, 8, 24);
+      }
+    }
+
     const { hopSeconds, frameCenterOffset } = this.track;
     const t0 = frameCenterOffset + TRACE_OFFSET_SECONDS;
     const firstFrame = Math.max(0, Math.floor((this.viewStart - t0) / hopSeconds) - 1);
@@ -245,6 +306,8 @@ export class TraceView {
       const v = (name: string) => s.getPropertyValue(name).trim();
       this.colors = {
         trace: v('--trace'),
+        select: v('--select'),
+        band: v('--band'),
         grid: v('--grid'),
         zero: v('--grid-strong'),
         text: v('--text-muted'),
@@ -281,20 +344,54 @@ export class TraceView {
     this.pointerId = e.pointerId;
     this.downX = e.clientX;
     this.scrubbing = false;
+    this.anchor = null;
+    if (this.mode === 'select') {
+      const x = this.localX(e);
+      const sel = this.selection;
+      // Grabbing an edge moves that edge; the other one stays put.
+      if (sel && Math.abs(x - this.timeToX(sel.start)) <= EDGE_GRAB_PX) this.anchor = sel.end;
+      else if (sel && Math.abs(x - this.timeToX(sel.end)) <= EDGE_GRAB_PX) this.anchor = sel.start;
+      else this.anchor = this.xToTime(x);
+    }
     this.overlay.setPointerCapture(e.pointerId);
   }
 
   private onMove(e: PointerEvent): void {
-    if (e.pointerId !== this.pointerId) return;
+    if (e.pointerId !== this.pointerId) {
+      this.hoverCursor(e);
+      return;
+    }
     if (!this.scrubbing && Math.abs(e.clientX - this.downX) >= VIEW.clickSlopPx) this.scrubbing = true;
-    if (this.scrubbing) this.cb.onScrub(this.xToTime(this.localX(e)));
+    if (!this.scrubbing) return;
+    const t = this.xToTime(this.localX(e));
+    if (this.mode === 'select' && this.anchor !== null) {
+      this.selection = normalizeSpan(this.anchor, t, this.track?.duration ?? 0);
+      this.drawTrace();
+      this.cb.onSelect(this.selection, false);
+    } else {
+      this.cb.onScrub(t);
+    }
   }
 
   private onUp(e: PointerEvent): void {
     if (e.pointerId !== this.pointerId) return;
     const t = this.xToTime(this.localX(e));
+    const dragged = this.scrubbing;
+    const selecting = this.mode === 'select';
     this.endPointer(false);
-    this.cb.onSeek(t);
+    if (!selecting) this.cb.onSeek(t);
+    else if (dragged) this.cb.onSelect(this.selection, true);
+    else this.cb.onPick(t);
+  }
+
+  private hoverCursor(e: PointerEvent): void {
+    if (this.mode !== 'select' || !this.selection) {
+      this.overlay.style.cursor = '';
+      return;
+    }
+    const x = this.localX(e);
+    const near = [this.selection.start, this.selection.end].some((t) => Math.abs(x - this.timeToX(t)) <= EDGE_GRAB_PX);
+    this.overlay.style.cursor = near ? 'ew-resize' : '';
   }
 
   private endPointer(cancelled: boolean): void {
@@ -304,6 +401,7 @@ export class TraceView {
     const wasScrubbing = this.scrubbing;
     this.pointerId = null;
     this.scrubbing = false;
-    if (wasScrubbing || cancelled) this.cb.onScrub(null);
+    this.anchor = null;
+    if (this.mode === 'seek' && (wasScrubbing || cancelled)) this.cb.onScrub(null);
   }
 }

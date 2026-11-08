@@ -11,6 +11,10 @@
   --trace: #1f5fbf;
   --playhead: #c2410c;
   --rec: #c62828;
+  --trace-b: #8b3fd9;
+  --select: rgba(31, 95, 191, 0.14);
+  --band: rgba(31, 95, 191, 0.06);
+  --backdrop: rgba(20, 20, 24, 0.35);
   --grid: #e7e5df;
   --grid-strong: #b9b6ad;
   color-scheme: light dark;
@@ -29,6 +33,10 @@
     --trace: #6aa8ff;
     --playhead: #ff8a5c;
     --rec: #ff6b6b;
+    --trace-b: #c895ff;
+    --select: rgba(106, 168, 255, 0.2);
+    --band: rgba(106, 168, 255, 0.08);
+    --backdrop: rgba(0, 0, 0, 0.55);
     --grid: #2a2d31;
     --grid-strong: #4a4e55;
   }
@@ -450,4 +458,407 @@ button.secondary:hover {
   .drop-zone {
     padding: 40px 16px;
   }
+}
+
+/* ---------- M1: phrase selection ---------- */
+#overlay-canvas.selecting {
+  cursor: crosshair;
+}
+
+.controls #select-mode[aria-pressed='true'] {
+  background: var(--select);
+  border-color: var(--trace);
+  color: var(--text);
+}
+
+.selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--band);
+}
+
+.selection-label {
+  font-variant-numeric: tabular-nums;
+  margin-right: auto;
+}
+
+.selection-bar button {
+  white-space: nowrap;
+}
+
+.selection-bar .hint {
+  flex-basis: 100%;
+}
+
+.selection-bar .hint:empty {
+  display: none;
+}
+
+/* ---------- M1: library drawer ---------- */
+.library-button .count {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--backdrop);
+  z-index: 10;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 100%);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.drawer:focus {
+  outline: none;
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.drawer-head h2,
+.compare-head h2,
+.save-dialog h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.drawer > .hint {
+  margin: 0;
+}
+
+.library-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 16px;
+}
+
+.library-empty {
+  color: var(--text-muted);
+}
+
+.lib-group {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.lib-subhead {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin: 8px 0 0;
+}
+
+.lib-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.library-list > .lib-row {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.lib-row.take {
+  border-top: 1px solid var(--border);
+  padding-left: 28px;
+  background: var(--bg);
+}
+
+.badge {
+  align-self: start;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.badge.model {
+  color: var(--trace);
+}
+
+.badge.me {
+  color: var(--trace-b);
+}
+
+.lib-main {
+  min-width: 0;
+}
+
+.lib-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spark {
+  display: block;
+  width: 120px;
+  height: 28px;
+  margin: 2px 0;
+}
+
+.spark path {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.spark.model path {
+  stroke: var(--trace);
+}
+
+.spark.me path {
+  stroke: var(--trace-b);
+}
+
+.lib-meta,
+.lib-size {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lib-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button.small {
+  padding: 3px 10px;
+  font-size: 0.875rem;
+}
+
+button.danger {
+  border-color: var(--error);
+  color: var(--error);
+  font-weight: 600;
+}
+
+/* ---------- M1: save dialog ---------- */
+.save-dialog {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 20px;
+  width: min(440px, calc(100% - 32px));
+}
+
+.save-dialog::backdrop {
+  background: var(--backdrop);
+}
+
+.save-dialog form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.save-dialog p {
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.field input:not([type='checkbox']):not([type='radio']),
+.field select,
+.compare-pickers select {
+  font: inherit;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.field.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+
+.role-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.role-field legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.role-field label {
+  display: block;
+  font-weight: 400;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------- M1: compare ---------- */
+.compare {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.compare-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.compare-pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px 16px 0;
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.picker select {
+  flex: 1;
+  min-width: 0;
+}
+
+.picker-label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chip {
+  width: 22px;
+  height: 0;
+  border-top: 3px solid var(--trace);
+  flex: none;
+}
+
+.chip-b {
+  border-top: 3px dashed var(--trace-b);
+}
+
+.compare-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 16px 12px;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 0;
+  padding: 4px 12px;
+}
+
+.segmented button[aria-checked='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.link-button {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  padding: 0;
+}
+
+.compare-empty {
+  margin: 0;
+  padding: 0 16px 12px;
+  color: var(--text-muted);
+}
+
+.compare-stage {
+  border-top: 1px solid var(--border);
+}
+
+#compare-canvas {
+  cursor: ew-resize;
+  touch-action: pan-y;
+}
+
+.compare .controls button {
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .drawer {
+    border-left: 0;
+  }
+}
+
+/* M1 polish */
+.topbar .file-name {
+  flex: 1 1 12rem; /* takes the free space; buttons wrap below on narrow screens */
+  min-width: 0;
+}
+
+.save-dialog p {
+  overflow-wrap: anywhere;
+}
+
+.field .hint {
+  font-weight: 400;
 }

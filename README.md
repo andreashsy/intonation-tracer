@@ -42,7 +42,20 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
 | `src/livePitch.ts` | Streaming resample to 16 kHz + YIN for the live trace |
 | `src/liveView.ts` | Scrolling live trace while recording |
 | `src/wav.ts` | 16-bit mono WAV encoding |
-| `src/main.ts` | Wiring, load/cancel flow, rAF loop, global keyboard handler |
+| `src/phrases.ts` | Phrase detection, slicing audio and traces, alignment helpers, sparklines |
+| `src/library/db.ts` | IndexedDB library: phrases plus shared video sources, sizes, cleanup |
+| `src/library/saveDialog.ts` | Save phrase dialog |
+| `src/library/libraryPanel.ts` | Library drawer |
+| `src/compare/compareChart.ts` | Overlay chart with drag-to-shift |
+| `src/compare/compareView.ts` | Compare screen: pickers, alignment, A/B playback, model video |
+| `src/main.ts` | Wiring, load/cancel flow, selection, rAF loop, global keyboard handler |
+
+## Phrase library and compare (M1)
+
+- **Select a phrase:** press **✂ Select phrase**, then click a phrase on the trace (phrases are detected at pauses) or drag across any part (up to 30 s). Drag the edges to adjust. **Play phrase** plays just that part.
+- **Save it:** **Save phrase…** asks for a name, whether it's a **Model** (someone to sound like) or **Me**, an optional language, which Model a Me take goes with, and whether to keep the video (with its size). Short clips can be saved whole.
+- **Library:** the **Library** button lists Models with their takes underneath, with trace previews, sizes and the total. **Remove video** keeps the audio and trace; **Delete** asks once. Everything stays in this browser only.
+- **Compare:** puts a Model (solid line) and your take (dashed) on one chart, each relative to its own typical pitch so different voices line up by shape. Align at the first sound or use raw timing, drag the chart to shift your take, and play A, B or A then B.
 
 ## Recording
 
@@ -66,7 +79,7 @@ Changing it re-traces the loaded clip in well under a second without stopping pl
 
 ## Keyboard
 
-Space play/pause · ←/→ 2 s · Shift+←/→ 10 s · Home/End. Shortcuts pause while you're typing in the voice range boxes.
+Space play/pause (a selected phrase plays just that phrase) · ←/→ 2 s · Shift+←/→ 10 s · Home/End · Esc clears the selection. Shortcuts pause while you're typing in the voice range boxes.
 
 ## Deploy to GitHub Pages
 
@@ -90,11 +103,12 @@ In DevTools → Network, `pitch.worker-<hash>.js` should load with status 200 fr
 
 ## Status
 
-- Unit tests: 42 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages).
+- Unit tests: 53 passing (sines at 100/220/440 Hz within ±1%, 100→300 Hz glide within ±2%, silence, noise, quiet-clip gating, post-processing steps, voice range and high-pass filter, live pitch from 48/44.1/16 kHz input, WAV encoding, mic error messages, phrase detection and slicing).
 - Benchmark: 60 s analyzed in about 0.9 s on the build machine (budget 2 s).
 - Smoke-tested in headless Chromium with a synthetic 20 s WAV: load, unsupported file, no-speech file, play/pause via Space without double-toggle, arrow jumps, click and drag seeking, seek bar, cancel then reload, phone width, dark mode. No console errors.
 - Video tested in headless Chromium with a portrait YouTube Short, a landscape test video and an audio-only file, at desktop and phone widths: play button, seek bar, trace clicks, video click and Space all keep video and playhead in sync.
 - Recording tested in headless Chromium with a fake microphone: live trace, level meter, Stop → trace and playback, Save downloads a valid WAV, Cancel, too-short recording, no microphone.
+- Library and compare tested in headless Chromium: select, save (one video shared by two phrases), record and link a take, library sizes, compare playback and shifting, remove video, delete, reload.
 - Voice range tested in headless Chromium on a real music-backed clip: switching presets mid-playback, custom values, invalid input, keyboard isolation, remembered setting.
 
 ## Still to do for M0 sign-off

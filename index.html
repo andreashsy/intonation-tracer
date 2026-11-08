@@ -10,6 +10,7 @@
     <main class="app">
       <header class="topbar">
         <h1 class="file-name" id="file-name">Intonation Tracer</h1>
+        <button type="button" id="open-library" class="secondary library-button" aria-controls="library" aria-expanded="false">Library <span id="library-count" class="count"></span></button>
         <div class="actions" id="actions" hidden>
           <a id="save-recording" class="button secondary" hidden>Save recording</a>
           <button type="button" id="record-again" class="secondary">● Record</button>
@@ -68,6 +69,14 @@
           <span id="time-current" class="time">0:00.0</span>
           <input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="Seek" />
           <span id="time-total" class="time">0:00.0</span>
+          <button type="button" id="select-mode" class="secondary" aria-pressed="false" title="Click a phrase or drag across the trace">✂ Select phrase</button>
+        </div>
+        <div class="selection-bar" id="selection-bar" hidden>
+          <span id="selection-label" class="selection-label" aria-live="polite"></span>
+          <button type="button" id="play-phrase" class="secondary">▶ Play phrase</button>
+          <button type="button" id="save-phrase" class="primary">Save phrase…</button>
+          <button type="button" id="clear-selection" class="secondary" aria-label="Clear selection">Clear</button>
+          <span id="selection-hint" class="hint"></span>
         </div>
         <fieldset class="settings" aria-describedby="range-help">
           <legend class="visually-hidden">Voice range</legend>
@@ -84,7 +93,81 @@
           </p>
         </fieldset>
       </section>
+
+      <!-- Compare (M1) -->
+      <section id="compare" class="compare" hidden aria-labelledby="compare-title">
+        <div class="compare-head">
+          <h2 id="compare-title">Compare</h2>
+          <button type="button" id="close-compare" class="secondary">✕ Close</button>
+        </div>
+        <div class="compare-pickers">
+          <label class="picker"><span class="chip chip-a" aria-hidden="true"></span><span class="picker-label">A · Model</span>
+            <select id="pick-a"></select></label>
+          <label class="picker"><span class="chip chip-b" aria-hidden="true"></span><span class="picker-label">B · Me</span>
+            <select id="pick-b"></select></label>
+        </div>
+        <div class="compare-options">
+          <span class="settings-label" id="align-label">Align</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="align-label">
+            <button type="button" role="radio" id="align-off" aria-checked="false">Off</button>
+            <button type="button" role="radio" id="align-start" aria-checked="true">Start</button>
+          </div>
+          <span id="nudge-label" class="hint">Drag the chart sideways to shift B.</span>
+          <button type="button" id="nudge-reset" class="link-button" hidden>Reset</button>
+        </div>
+        <p id="compare-empty" class="compare-empty" hidden></p>
+        <div class="stage compare-stage" id="compare-stage">
+          <div class="video-wrap" id="compare-video-wrap" hidden>
+            <video id="compare-media-a" preload="auto" playsinline webkit-playsinline></video>
+          </div>
+          <div class="trace-wrap" id="compare-wrap">
+            <canvas id="compare-canvas" role="img" aria-label="Model and your pitch traces overlaid"></canvas>
+          </div>
+        </div>
+        <audio id="compare-media-b" preload="auto"></audio>
+        <div class="controls">
+          <button type="button" id="play-a" class="secondary">▶ A</button>
+          <button type="button" id="play-b" class="secondary">▶ B</button>
+          <button type="button" id="play-ab" class="primary">▶ A then B</button>
+          <span id="compare-time" class="time">0:00.0</span>
+        </div>
+      </section>
     </main>
+
+    <!-- Library drawer (M1) -->
+    <div class="drawer-backdrop" id="library-backdrop" hidden></div>
+    <aside id="library" class="drawer" hidden aria-labelledby="library-title" tabindex="-1">
+      <div class="drawer-head">
+        <h2 id="library-title">Library</h2>
+        <button type="button" id="close-library" class="secondary" aria-label="Close library">✕</button>
+      </div>
+      <p id="library-usage" class="hint"></p>
+      <div id="library-list" class="library-list"></div>
+    </aside>
+
+    <!-- Save phrase dialog (M1) -->
+    <dialog id="save-dialog" class="save-dialog" aria-labelledby="save-title">
+      <form method="dialog" id="save-form">
+        <h2 id="save-title">Save phrase</h2>
+        <p id="save-summary" class="hint"></p>
+        <label class="field">Name <input id="save-name" required maxlength="120" /></label>
+        <fieldset class="field role-field">
+          <legend>Whose voice is this?</legend>
+          <label><input type="radio" name="role" value="model" checked /> Model <span class="hint">(someone to sound like)</span></label>
+          <label><input type="radio" name="role" value="me" /> Me</label>
+        </fieldset>
+        <label class="field"><span>Language <span class="hint">(optional)</span></span> <input id="save-language" maxlength="40" list="language-list" /></label>
+        <datalist id="language-list"></datalist>
+        <label class="field" id="save-link-field" hidden>Compare with <select id="save-link"></select></label>
+        <label class="field checkbox" id="save-video-field" hidden><input type="checkbox" id="save-video" checked /> <span id="save-video-label">Keep video</span></label>
+        <p class="hint">Saved in this browser only.</p>
+        <p id="save-error" class="error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" id="save-cancel" class="secondary">Cancel</button>
+          <button type="submit" id="save-confirm" class="primary" value="save">Save</button>
+        </div>
+      </form>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
