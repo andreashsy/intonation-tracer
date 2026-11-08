@@ -32,16 +32,17 @@
       <section id="recorder" class="recorder" hidden aria-label="Recording">
         <div class="live-wrap" id="live-wrap">
           <canvas id="live-canvas" role="img" aria-label="Live pitch trace"></canvas>
-          <p id="mic-wait" class="no-voice">Allow microphone access to start recording…</p>
+          <p id="mic-wait" class="no-voice" aria-live="polite">Allow microphone access to continue…</p>
         </div>
         <div class="controls">
-          <span class="rec-dot" aria-hidden="true"></span>
+          <span class="rec-dot" id="rec-dot" aria-hidden="true"></span>
           <span id="rec-time" class="time" aria-live="off">0:00.0</span>
           <div class="level" aria-hidden="true"><div class="level-fill" id="level-fill"></div></div>
-          <button type="button" id="stop-recording" class="primary">■ Stop</button>
+          <button type="button" id="start-recording" class="primary start-recording" hidden>● Start recording</button>
+          <button type="button" id="stop-recording" class="primary" hidden>■ Stop</button>
           <button type="button" id="cancel-recording" class="secondary">Cancel</button>
         </div>
-        <p class="hint rec-hint" id="rec-hint">Speak normally. Stopping shows the full trace with playback. Up to <span id="rec-limit">10 minutes</span>.</p>
+        <p class="hint rec-hint" id="rec-hint">Press Start recording when you're ready, then speak normally. Stopping shows the full trace with playback. Up to <span id="rec-limit">10 minutes</span>.</p>
       </section>
 
       <!-- Decoding / analyzing -->

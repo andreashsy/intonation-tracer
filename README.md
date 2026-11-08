@@ -66,8 +66,9 @@ file ─▶ decoder (16 kHz mono) ─▶ pitch.worker (YIN + post-processing) �
 
 ## Recording
 
-Press **Record with microphone** (or **Record** in the top bar). While you speak, a live pitch trace scrolls past,
-with a level meter and timer. **Stop** turns the recording into a WAV and shows the full trace with playback,
+Press **Record with microphone** (or **Record** in the top bar) and allow the microphone. The level meter comes
+alive so you can check your mic, and recording only begins when you press **● Start recording**. While you speak,
+a live pitch trace scrolls past with the timer running. **Stop** turns the recording into a WAV and shows the full trace with playback,
 seeking and voice range, just like an uploaded file; **Save recording** downloads it. Up to 10 minutes (5 on phones).
 Echo cancellation, noise suppression and auto gain are turned off because they distort pitch.
 Microphone access needs https (GitHub Pages is) or `localhost`.

@@ -155,9 +155,19 @@ button.primary {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--rec);
+  background: var(--grid-strong); /* grey until recording starts */
   flex: none;
+}
+
+.rec-dot.live {
+  background: var(--rec);
   animation: pulse 1.2s ease-in-out infinite;
+}
+
+button.start-recording {
+  background: var(--rec);
+  border-color: var(--rec);
+  color: #fff;
 }
 
 @keyframes pulse {
@@ -167,7 +177,7 @@ button.primary {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rec-dot {
+  .rec-dot.live {
     animation: none;
   }
 }
@@ -1015,4 +1025,11 @@ button.danger {
   .practice-keys {
     display: none;
   }
+}
+
+/* Waiting for permission / ready to start: soften the empty chart behind the message. */
+#mic-wait {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  padding: 0 16px;
+  text-align: center;
 }

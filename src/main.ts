@@ -60,6 +60,8 @@ const ui = {
   stopRecording: $<HTMLButtonElement>('stop-recording'),
   cancelRecording: $<HTMLButtonElement>('cancel-recording'),
   recLimit: $<HTMLSpanElement>('rec-limit'),
+  startRecording: $<HTMLButtonElement>('start-recording'),
+  recDot: $<HTMLSpanElement>('rec-dot'),
   selectMode: $<HTMLButtonElement>('select-mode'),
   selectionBar: $<HTMLDivElement>('selection-bar'),
   selectionLabel: $<HTMLSpanElement>('selection-label'),
@@ -295,6 +297,7 @@ let levelDb = -100;
 ui.record.addEventListener('click', () => void startRecording());
 ui.recordAgain.addEventListener('click', () => void startRecording());
 ui.stopRecording.addEventListener('click', () => stopRecording());
+ui.startRecording.addEventListener('click', () => beginCapture());
 ui.cancelRecording.addEventListener('click', () => cancelLoad());
 
 async function startRecording(): Promise<void> {
@@ -306,7 +309,7 @@ async function startRecording(): Promise<void> {
   ui.recTime.textContent = formatTime(0);
   levelDb = -100;
   liveView.reset(voiceRange.range);
-  setStatus({ kind: 'recording', live: false });
+  setStatus({ kind: 'recording', phase: 'waiting' });
 
   const rec = new MicRecorder();
   recorder = rec;
@@ -321,15 +324,31 @@ async function startRecording(): Promise<void> {
     rec.cancel(); // cancelled while waiting
     return;
   }
+  // Mic is open: show the level, but don't record until the user presses Start.
+  rec.capturing = false;
   const live = new LivePitch(rec.sampleRate, voiceRange.range, (f) => liveView.push(f.f0));
-  rec.onAudio = (x) => {
-    live.push(x);
+  rec.onMonitor = (x) => {
     let peak = 0;
     for (let i = 0; i < x.length; i++) peak = Math.max(peak, Math.abs(x[i]));
     levelDb = Math.max(levelDb, 20 * Math.log10(peak + 1e-9));
   };
-  rec.onEnded = () => stopRecording(); // mic unplugged or permission revoked
-  setStatus({ kind: 'recording', live: true });
+  rec.onAudio = (x) => live.push(x);
+  rec.onEnded = () => {
+    // Mic unplugged or permission revoked: keep what was recorded, or explain if nothing was.
+    const s = getStatus();
+    if (s.kind === 'recording' && s.phase === 'live') stopRecording();
+    else fail('The microphone was disconnected. Connect it and try again.');
+  };
+  setStatus({ kind: 'recording', phase: 'ready' });
+  ui.startRecording.focus();
+}
+
+/** Start pressed: begin keeping audio and drawing the live trace. */
+function beginCapture(): void {
+  const s = getStatus();
+  if (!recorder || s.kind !== 'recording' || s.phase !== 'ready') return;
+  recorder.capturing = true;
+  setStatus({ kind: 'recording', phase: 'live' });
   ui.stopRecording.focus();
 }
 
@@ -337,7 +356,7 @@ async function startRecording(): Promise<void> {
 function stopRecording(): void {
   const rec = recorder;
   const s = getStatus();
-  if (!rec || s.kind !== 'recording' || !s.live) return;
+  if (!rec || s.kind !== 'recording' || s.phase !== 'live') return;
   recorder = null;
   const r = rec.stop();
   if (r.length < r.sampleRate * 0.5) return fail('That recording was too short. Speak for at least a second, then press Stop.');
@@ -653,7 +672,15 @@ subscribe((s) => {
   ui.openLibrary.hidden = s.kind === 'loading' || s.kind === 'recording';
   if (s.kind === 'ready') ui.fileName.textContent = currentName;
   else if (s.kind === 'empty' || s.kind === 'practice') ui.fileName.textContent = 'Intonation Tracer';
-  ui.micWait.hidden = s.kind !== 'recording' || s.live;
+  const recPhase = s.kind === 'recording' ? s.phase : null;
+  ui.micWait.hidden = recPhase === null || recPhase === 'live';
+  ui.micWait.textContent =
+    recPhase === 'ready'
+      ? 'Microphone ready. Check the level meter, then press Start recording.'
+      : 'Allow microphone access to continue…';
+  ui.startRecording.hidden = recPhase !== 'ready';
+  ui.stopRecording.hidden = recPhase !== 'live';
+  ui.recDot.classList.toggle('live', recPhase === 'live');
   ui.actions.hidden = s.kind !== 'ready';
 
   ui.error.hidden = !(s.kind === 'empty' && s.error);
