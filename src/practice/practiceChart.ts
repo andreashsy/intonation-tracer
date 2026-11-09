@@ -335,10 +335,13 @@ export class PracticeChart {
 
     // ---- typical-pitch tags (on top) ----
     const tags: [string, string, number][] = [];
+    // On a narrow chart, side-by-side tags would run into the right-hand axis: shorten them.
     for (const who of ['model', 'me'] as const) {
       const t = this.typicalOf(who);
       if (Number.isNaN(t)) continue;
-      const label = `${who === 'model' ? 'Model' : 'Your'} typical ${formatHz(t)}`;
+      const label = narrow
+        ? `${who === 'model' ? 'Model' : 'You'} ${formatHz(t)}`
+        : `${who === 'model' ? 'Model' : 'Your'} typical ${formatHz(t)}`;
       const y = this.unit === 'st' ? this.stToY(0) : this.hzToY(t, NaN);
       tags.push([label, who === 'model' ? color('--trace') : color('--trace-b'), y]);
     }

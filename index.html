@@ -14,13 +14,14 @@
         <div class="actions" id="actions" hidden>
           <a id="save-recording" class="button secondary" hidden>Save recording</a>
           <button type="button" id="record-again" class="secondary">● Record</button>
-          <button type="button" id="load-another" class="secondary">Load another file</button>
+          <button type="button" id="load-another" class="secondary"><span class="label-long">Load another file</span><span class="label-short">Open file</span></button>
         </div>
       </header>
 
       <!-- Empty / error state -->
       <section id="drop-zone" class="drop-zone" tabindex="0" aria-describedby="drop-hint">
-        <p class="drop-title">Drop an audio or video file, or <label for="file-input" class="link">choose one</label>.</p>
+        <p class="drop-title for-mouse">Drop an audio or video file, or <label for="file-input" class="link">choose one</label>.</p>
+        <label for="file-input" class="button primary choose-file for-touch">Choose audio or video</label>
         <p id="drop-hint" class="hint">MP3, WAV, M4A, OGG, MP4, WebM or MOV · up to <span id="limit-text">200 MB</span></p>
         <p class="or" aria-hidden="true">or</p>
         <button type="button" id="record" class="record-button">● Record with microphone</button>
@@ -143,13 +144,16 @@
         <audio id="practice-take-media" preload="auto"></audio>
         <div class="practice-controls">
           <div class="practice-play">
-            <button type="button" id="play-model" class="secondary">▶ Model</button>
             <label class="speed">Speed
               <select id="model-speed"><option value="1">1×</option><option value="0.75">0.75×</option><option value="0.5">0.5×</option></select></label>
             <button type="button" id="play-take" class="secondary">▶ My take</button>
             <button type="button" id="play-model-me" class="secondary">▶ Model → Me</button>
           </div>
-          <button type="button" id="try-again" class="try-button" aria-pressed="false" title="Plays the model, counts you in, then records you (R)">● Try again</button>
+          <!-- On desktop these two sit in the row above; on phones they become a bar fixed to the bottom of the screen. -->
+          <div class="practice-bar">
+            <button type="button" id="play-model" class="secondary">▶ Model</button>
+            <button type="button" id="try-again" class="try-button" aria-pressed="false" title="Plays the model, counts you in, then records you (R)">● Try again</button>
+          </div>
         </div>
         <div class="takes-row">
           <span class="settings-label">Takes</span>

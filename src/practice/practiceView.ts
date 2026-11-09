@@ -362,6 +362,9 @@ export class PracticeView {
     this.stopPlayback();
     this.status.textContent = '';
     this.message.hidden = true;
+    // On phones the chart may be partly behind the bottom bar: bring it fully into view
+    // so the live line can be watched while recording.
+    $<HTMLDivElement>('practice-wrap').scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
     this.setPhase('arming');
     const rec = new MicRecorder();
     rec.capturing = false; // mic open, nothing kept while the model plays

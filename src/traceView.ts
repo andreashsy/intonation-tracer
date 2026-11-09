@@ -24,6 +24,10 @@ import type { PitchTrack } from './types.ts';
 
 const MARGIN = { left: 56, right: 56, top: 12, bottom: 28 };
 const EDGE_GRAB_PX = 8;
+/** A clip shorter than this still gets this much width (so a tiny clip isn't stretched absurdly). */
+const MIN_WINDOW_SECONDS = 1;
+const TICK_STEPS = [0.1, 0.2, 0.5, 1, 2, 5, 10];
+const MIN_TICK_PX = 80;
 
 export interface TraceViewCallbacks {
   /** Pointer released: seek to this time. */
@@ -104,8 +108,14 @@ export class TraceView {
     overlay.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
+  /**
+   * Seconds shown across the chart: the whole clip when it's shorter than the usual
+   * window (so a 1.5 s phrase fills the width instead of sitting at the left), but at
+   * least 1 s.
+   */
   get windowSeconds(): number {
-    return VIEW.windowSeconds;
+    const d = this.track?.duration ?? 0;
+    return d > 0 ? Math.min(VIEW.windowSeconds, Math.max(MIN_WINDOW_SECONDS, d)) : VIEW.windowSeconds;
   }
 
   get start(): number {
@@ -182,7 +192,7 @@ export class TraceView {
   /** Sets the left edge of the visible window (clamped). Returns true if it changed. */
   setViewStart(start: number): boolean {
     const duration = this.track?.duration ?? 0;
-    const max = Math.max(0, duration - VIEW.windowSeconds);
+    const max = Math.max(0, duration - this.windowSeconds);
     const clamped = Math.min(Math.max(0, start), max);
     if (Math.abs(clamped - this.viewStart) < 1e-6) return false;
     this.viewStart = clamped;
@@ -193,7 +203,7 @@ export class TraceView {
 
   /** Keeps a playing playhead in view: past 75% → move it back to 25%. */
   follow(t: number): void {
-    const span = VIEW.windowSeconds;
+    const span = this.windowSeconds;
     if (t > this.viewStart + VIEW.scrollTrigger * span || t < this.viewStart) {
       this.setViewStart(t - VIEW.scrollTarget * span);
     }
@@ -201,7 +211,7 @@ export class TraceView {
 
   /** After a seek: move the view only if t is off screen. */
   reveal(t: number): void {
-    const span = VIEW.windowSeconds;
+    const span = this.windowSeconds;
     if (t < this.viewStart || t > this.viewStart + span) this.setViewStart(t - VIEW.scrollTarget * span);
   }
 
@@ -329,12 +339,14 @@ export class TraceView {
       }
     }
 
-    // ---- time ticks: every second, or every 2 s when cramped ----
-    const pxPerSec = (plotRight - MARGIN.left) / VIEW.windowSeconds;
-    const step = pxPerSec < 50 ? 2 : 1;
+    // ---- time ticks: the smallest round step that leaves room for the labels ----
+    const pxPerSec = (plotRight - MARGIN.left) / this.windowSeconds;
+    const step = TICK_STEPS.find((st) => st * pxPerSec >= MIN_TICK_PX) ?? 10;
     ctx.textBaseline = 'top';
-    const first = Math.ceil(this.viewStart / step) * step;
-    for (let t = first; t <= this.viewStart + VIEW.windowSeconds + 1e-6; t += step) {
+    const firstK = Math.ceil(this.viewStart / step - 1e-6);
+    const lastK = Math.floor((this.viewStart + this.windowSeconds) / step + 1e-6);
+    for (let k = firstK; k <= lastK; k++) {
+      const t = k * step;
       const x = Math.round(this.timeToX(t)) + 0.5;
       ctx.strokeStyle = c.grid;
       ctx.lineWidth = 1;
@@ -346,7 +358,8 @@ export class TraceView {
       const m = Math.floor(t / 60);
       const s = Math.round(t - m * 60);
       ctx.textAlign = 'center';
-      ctx.fillText(`${m}:${String(s).padStart(2, '0')}`, x, plotBottom + 8);
+      // Sub-second steps need tenths ("0:00.5"); whole seconds stay short ("0:01").
+      ctx.fillText(step < 1 ? formatTime(t) : `${m}:${String(s).padStart(2, '0')}`, x, plotBottom + 8);
     }
 
     // ---- phrase bands (select mode) and the selection, behind the trace ----
@@ -381,7 +394,7 @@ export class TraceView {
     const { hopSeconds, frameCenterOffset } = this.track;
     const t0 = frameCenterOffset + TRACE_OFFSET_SECONDS;
     const firstFrame = Math.max(0, Math.floor((this.viewStart - t0) / hopSeconds) - 1);
-    const lastFrame = Math.min(this.track.f0.length - 1, Math.ceil((this.viewStart + VIEW.windowSeconds - t0) / hopSeconds) + 1);
+    const lastFrame = Math.min(this.track.f0.length - 1, Math.ceil((this.viewStart + this.windowSeconds - t0) / hopSeconds) + 1);
     ctx.save();
     ctx.beginPath();
     ctx.rect(MARGIN.left, plotTop, plotRight - MARGIN.left, plotBottom - plotTop);
@@ -482,12 +495,12 @@ export class TraceView {
 
   private timeToX(t: number): number {
     const w = this.width - MARGIN.left - MARGIN.right;
-    return MARGIN.left + ((t - this.viewStart) / VIEW.windowSeconds) * w;
+    return MARGIN.left + ((t - this.viewStart) / this.windowSeconds) * w;
   }
 
   private xToTime(x: number): number {
     const w = this.width - MARGIN.left - MARGIN.right;
-    const t = this.viewStart + ((x - MARGIN.left) / w) * VIEW.windowSeconds;
+    const t = this.viewStart + ((x - MARGIN.left) / w) * this.windowSeconds;
     return Math.min(Math.max(0, t), this.track?.duration ?? 0);
   }
 

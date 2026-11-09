@@ -1,6 +1,6 @@
-// Library drawer (M1 spec §7): built-in samples (§7.1, read-only, grouped by language,
-// absent when there are none), then the user's Models with their linked takes, other takes,
-// sizes and actions.
+// Library drawer (M1 spec §7): the user's Models with their linked takes, other takes,
+// sizes and actions, then built-in samples at the bottom (§7.1, read-only, grouped by
+// language, absent when there are none).
 
 import { formatTime } from '../format.ts';
 import { formatBytes, sparklinePath } from '../phrases.ts';
@@ -55,9 +55,9 @@ export class LibraryPanel {
     return this.items;
   }
 
-  /** Samples followed by the user's phrases: what Practice and the save dialog can pick from. */
+  /** The user's phrases followed by samples: what Practice and the save dialog can pick from. */
   get allPhrases(): PhraseInfo[] {
-    return [...this.samples.map((phrase) => ({ phrase, videoSize: 0, videoSharedBy: 0 })), ...this.items];
+    return [...this.items, ...this.samples.map((phrase) => ({ phrase, videoSize: 0, videoSharedBy: 0 }))];
   }
 
   /** Updates the built-in samples (ready ones, plus ones still being prepared). */
@@ -117,9 +117,20 @@ export class LibraryPanel {
     const modelIds = new Set([...models.map((m) => m.phrase.id), ...this.samples.map((s) => s.id)]);
     const takes = this.items.filter((i) => i.phrase.role === 'me');
     const nodes: Node[] = [];
+    const sampleNodes: Node[] = [];
+    const hasSamples = this.samples.length > 0 || this.samplesPending.length > 0;
 
-    // ---- Samples (only when the app ships some) ----
-    if (this.samples.length || this.samplesPending.length) {
+    // ---- The user's own phrases first; "My library" is only labelled when samples follow ----
+    if (hasSamples) {
+      const mine = document.createElement('h3');
+      mine.className = 'lib-section';
+      mine.textContent = 'My library';
+      nodes.push(mine);
+    }
+
+    // ---- Samples at the bottom (only when the app ships some) ----
+    if (hasSamples) {
+      const nodes = sampleNodes;
       const h = document.createElement('h3');
       h.className = 'lib-section';
       h.textContent = 'Samples';
@@ -151,17 +162,14 @@ export class LibraryPanel {
         }
         nodes.push(...rows);
       }
-      const mine = document.createElement('h3');
-      mine.className = 'lib-section';
-      mine.textContent = 'My library';
-      nodes.push(mine);
     }
 
     if (!this.items.length) {
       const p = document.createElement('p');
       p.className = 'library-empty';
-      p.textContent =
-        'No saved phrases yet. Load a clip or record yourself, press "Select phrase", pick a sentence, then "Save phrase…". Then press "Practice" on a Model to record yourself and match it.';
+      p.textContent = hasSamples
+        ? 'No saved phrases yet. Try a sample below, or load a clip, press "Select phrase", pick a sentence and "Save phrase…".'
+        : 'No saved phrases yet. Load a clip or record yourself, press "Select phrase", pick a sentence, then "Save phrase…". Then press "Practice" on a Model to record yourself and match it.';
       nodes.push(p);
     }
 
@@ -180,7 +188,7 @@ export class LibraryPanel {
       nodes.push(h);
       for (const t of loose) nodes.push(this.row(t, false));
     }
-    this.list.replaceChildren(...nodes);
+    this.list.replaceChildren(...nodes, ...sampleNodes);
   }
 
   private row(info: PhraseInfo, indented: boolean): HTMLElement {

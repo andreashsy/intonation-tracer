@@ -114,7 +114,8 @@ button {
   text-decoration: none;
 }
 
-button.primary {
+button.primary,
+.button.primary {
   background: var(--accent);
   color: var(--accent-text);
   border-color: var(--accent);
@@ -125,6 +126,11 @@ button.primary {
 .or {
   color: var(--text-muted);
   margin: 16px 0 12px;
+}
+
+.label-short,
+.for-touch {
+  display: none;
 }
 
 .record-button {
@@ -366,6 +372,8 @@ button.secondary:hover {
   display: grid;
   place-items: center;
   margin: 0;
+  padding: 0 64px; /* between the axis labels */
+  text-align: center;
   color: var(--text-muted);
   pointer-events: none;
 }
@@ -469,6 +477,41 @@ button.secondary:hover {
   }
   .drop-zone {
     padding: 40px 16px;
+  }
+  /* Video, trace and play controls should fit on one phone screen. */
+  .video-wrap video {
+    max-height: 28vh;
+  }
+  .trace-wrap {
+    height: clamp(200px, 34vh, 320px);
+  }
+  /* Title and Library on one line, the clip's actions on one compact line below. */
+  .topbar {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .topbar .actions {
+    flex: 1 1 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .topbar .actions > * {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .label-long {
+    display: none;
+  }
+  .label-short {
+    display: inline;
+  }
+  /* "Select phrase" gets its own line, or it squeezes the seek bar to nothing. */
+  .controls {
+    flex-wrap: wrap;
+  }
+  .controls #select-mode {
+    flex: 1 1 100%;
   }
 }
 
@@ -1344,9 +1387,14 @@ button.danger {
 
 @media (max-width: 480px) {
   .readout-hint {
-    right: 8px;
-    left: 64px;
+    /* Between the two axes, so it never covers their labels. */
+    right: 60px;
+    left: 60px;
     max-width: none;
+  }
+  /* The ⓘ button sits right above the chart, so the chip keeps to one short line. */
+  .readout-hint .link-button {
+    display: none;
   }
 }
 
@@ -1429,4 +1477,138 @@ button.danger {
   border: 1px dashed var(--border);
   border-radius: 12px;
   font-style: italic;
+}
+
+/* ---------- Phone overrides that must come after the base rules above ---------- */
+@media (max-width: 400px) {
+  /* Keep "Min [ ] Hz – Max [ ] Hz" on one line on small phones. */
+  .range-inputs {
+    gap: 6px;
+  }
+  .range-inputs label {
+    white-space: nowrap;
+  }
+  .settings input {
+    width: 4.2em;
+  }
+}
+
+@media (max-width: 480px) {
+  /* The Download menu opens across the row instead of running off the right edge. */
+  .lib-row {
+    position: relative;
+  }
+  .dl-menu {
+    position: static;
+  }
+  .dl-list {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    min-width: 0;
+  }
+}
+
+/* Phones and tablets: no drag-and-drop, so offer a plain button; and bigger tap targets. */
+@media (pointer: coarse) {
+  .for-mouse {
+    display: none;
+  }
+  .for-touch {
+    display: inline-flex;
+  }
+  .choose-file {
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 10px 22px;
+    font-size: 1.05rem;
+  }
+  .record-button {
+    min-height: 48px;
+  }
+  button.small,
+  .lib-actions button,
+  .dl-menu summary,
+  .axis-unit,
+  .segmented button {
+    min-height: 40px;
+  }
+  .dl-menu summary {
+    display: inline-flex;
+    align-items: center;
+  }
+  .dl-item {
+    min-height: 48px;
+  }
+  .axis-help-button {
+    width: 40px;
+    height: 40px;
+  }
+  .hint-close {
+    min-width: 36px;
+    min-height: 36px;
+  }
+  .readout-hint .link-button {
+    padding: 8px 0;
+  }
+}
+
+/* ---------- Practice: ▶ Model and Try again ---------- */
+/* Desktop: one row — ▶ Model, Speed, ▶ My take, ▶ Model → Me … Try again. */
+.practice-bar {
+  display: contents;
+}
+
+.practice-controls {
+  justify-content: flex-start;
+}
+
+#play-model {
+  order: -1;
+}
+
+#try-again {
+  margin-left: auto;
+}
+
+/* Phones: a bar fixed to the bottom of the screen, so Try again is always in reach
+   however far the model's video and the chart push the rest down. */
+@media (max-width: 720px) {
+  .practice-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 8; /* under the library drawer (10) and dialogs */
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 16px rgb(0 0 0 / 0.08);
+  }
+  .practice-bar #play-model {
+    flex: none;
+    min-height: 56px;
+    padding: 0 14px;
+  }
+  .practice-bar #try-again {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    min-height: 56px;
+    margin-left: 0;
+  }
+  /* Room below the last of Practice so the bar never covers it. */
+  body:has(#practice:not([hidden])) {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 720px) {
+  /* Scrolling things into view (e.g. the newest take) stops above the bar. */
+  html:has(#practice:not([hidden])) {
+    scroll-padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
 }
