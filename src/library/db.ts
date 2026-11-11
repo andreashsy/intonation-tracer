@@ -45,7 +45,11 @@ export interface PhraseInfo {
   videoSharedBy: number; // phrases using the same source
 }
 
-const DB_NAME = 'intonation-tracer';
+// The beta build (APP_VARIANT=beta, see vite.config.ts) is served from the same origin as the
+// stable site, so it gets its own database and can't touch the stable library.
+declare const __BETA__: boolean | undefined;
+const DB_NAME =
+  typeof __BETA__ !== 'undefined' && __BETA__ ? 'intonation-tracer-beta' : 'intonation-tracer';
 const VERSION = 1;
 
 export class LibraryUnavailable extends Error {}

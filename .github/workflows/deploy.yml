@@ -1,11 +1,21 @@
-# Builds the app and publishes dist/ to GitHub Pages.
-# One-time setup: repo Settings → Pages → Build and deployment → Source: GitHub Actions.
+# Builds two versions of the app and publishes them as one GitHub Pages site:
+#   stable        = the default branch (master)  ->  https://<user>.github.io/<repo>/
+#   experimental  = the `experimental` branch    ->  https://<user>.github.io/<repo>/beta/
+# Pages hosts one site per repo, so every run builds both and publishes them together.
+# A broken or missing experimental branch never blocks the stable deploy: the beta is skipped.
+#
+# One-time setup:
+#   1. repo Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
+#   2. repo Settings -> Environments -> github-pages -> Deployment branches: also allow
+#      `experimental`, or pushes to it can't deploy.
+# Keep this file identical on both branches (a push runs the copy on the pushed branch).
+# If the default branch is renamed, update the branches list below.
 # Action versions are pinned to commits (as in the Vite deploy guide); the comment shows the tag.
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [master, experimental]
   workflow_dispatch:
 
 permissions:
@@ -14,6 +24,7 @@ permissions:
   id-token: write
 
 # Only one deployment at a time; a newer push replaces one still running.
+# Each run builds the latest of both branches, so a newer run always includes the older one's changes.
 concurrency:
   group: pages
   cancel-in-progress: true
@@ -22,28 +33,43 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout stable (default branch)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: stable
+
+      - name: Checkout experimental
+        id: beta_checkout
+        continue-on-error: true # branch may not exist yet
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: experimental
+          path: beta
 
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: lts/* # needs 22.18+ to run the .ts tests directly
           cache: npm
-          cache-dependency-path: package.json
+          cache-dependency-path: stable/package-lock.json
 
-      - name: Install dependencies
-        # npm ci needs a committed package-lock.json; fall back to npm install until there is one.
+      - name: Stable - install dependencies
+        working-directory: stable
+        # npm ci needs a committed package-lock.json; fall back to npm install without one.
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-      - name: Unit tests
+      - name: Stable - unit tests
+        working-directory: stable
         run: npm test
 
-      - name: Build (type check + Vite)
+      - name: Stable - build (type check + Vite)
+        working-directory: stable
         run: npm run build
 
-      - name: Check build output
+      - name: Stable - check build output
+        working-directory: stable
         run: |
           echo "Built files:"; ls -la dist dist/assets
           if ! ls dist/assets | grep -q '^pitch\.worker.*\.js$'; then
@@ -56,13 +82,51 @@ jobs:
             echo "::error::index.html has root-absolute asset paths; check base in vite.config.ts"; exit 1
           fi
 
+      # Experimental: any failure here only skips the beta, it never fails the deploy.
+      - name: Experimental - test, build and check
+        id: beta
+        if: steps.beta_checkout.outcome == 'success'
+        continue-on-error: true
+        working-directory: beta
+        run: |
+          set -e
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          npm test
+          APP_VARIANT=beta npm run build
+          if ! ls dist/assets | grep -q '^pitch\.worker.*\.js$'; then
+            echo "::error::Pitch worker chunk missing from beta dist/assets"; exit 1
+          fi
+          if [ ! -f dist/samples/manifest.json ]; then
+            echo "::error::dist/samples/manifest.json missing from beta build"; exit 1
+          fi
+          if grep -Eq '(src|href)="/' dist/index.html; then
+            echo "::error::beta index.html has root-absolute asset paths"; exit 1
+          fi
+          # The beta shares the stable site's origin, so it must use its own library database.
+          if ! grep -rqs 'intonation-tracer-beta' dist/assets; then
+            echo "::error::beta build does not use its own database name; refusing to publish it"; exit 1
+          fi
+
+      - name: Assemble site
+        run: |
+          mkdir site
+          cp -r stable/dist/. site/
+          if [ "${{ steps.beta.outcome }}" = "success" ]; then
+            mkdir site/beta
+            cp -r beta/dist/. site/beta/
+            echo "Publishing stable at / and experimental at /beta/"
+          else
+            echo "::warning::Experimental build skipped (branch missing or build failed). Publishing stable only; /beta/ will be absent."
+          fi
+          find site -maxdepth 2 | sort | head -30
+
       - name: Set up Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - name: Upload site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
-          path: ./dist
+          path: ./site
 
   deploy:
     needs: build
