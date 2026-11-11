@@ -1,5 +1,5 @@
 # Builds two versions of the app and publishes them as one GitHub Pages site:
-#   stable        = the default branch (master)  ->  https://<user>.github.io/<repo>/
+#   stable        = the default branch (main)  ->  https://<user>.github.io/<repo>/
 #   experimental  = the `experimental` branch    ->  https://<user>.github.io/<repo>/beta/
 # Pages hosts one site per repo, so every run builds both and publishes them together.
 # A broken or missing experimental branch never blocks the stable deploy: the beta is skipped.
@@ -15,7 +15,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [master, experimental]
+    branches: [main, experimental]
   workflow_dispatch:
 
 permissions:

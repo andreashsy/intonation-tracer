@@ -130,7 +130,7 @@ The repo includes `.github/workflows/deploy.yml`, which tests, builds and publis
 
 1. **Push** this folder to a GitHub repository (any name), with `main` as the default branch.
 2. **Turn on Pages:** repo **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. **Run it:** push to `master` (or `experimental`), or open **Actions → Deploy to GitHub Pages → Run workflow**.
+3. **Run it:** push to `main` (or `experimental`), or open **Actions → Deploy to GitHub Pages → Run workflow**.
    The site appears at `https://<user>.github.io/<repo>/`; the link is also on the workflow run.
 4. **Commit the lockfile:** after your first local `npm install`, commit `package-lock.json`.
    The workflow uses `npm ci` when it's there (faster, exact versions) and falls back to `npm install` until then.
@@ -150,13 +150,13 @@ GitHub Pages hosts one site per repo, so the workflow publishes two builds toget
 
 | Version | Branch | URL |
 |---|---|---|
-| Stable | `master` (default) | `https://<user>.github.io/<repo>/` |
+| Stable | `main` (default) | `https://<user>.github.io/<repo>/` |
 | Experimental | `experimental` | `https://<user>.github.io/<repo>/beta/` |
 
 - Every run builds the latest of both branches, so a push to either branch redeploys both.
 - If `experimental` is missing or its tests/build fail, the beta is skipped and stable still deploys (see the warning on the run).
 - The beta is built with `APP_VARIANT=beta`, which gives it its own IndexedDB library (`intonation-tracer-beta`). Both sites share one origin, so without this the beta could break the stable library. Saved settings in localStorage (axis unit, voice range, language) are still shared.
-- Keep `.github/workflows/deploy.yml` identical on both branches. Merge `master` into `experimental` regularly.
+- Keep `.github/workflows/deploy.yml` identical on both branches. Merge `main` into `experimental` regularly.
 - One-time: Settings → Environments → github-pages → Deployment branches: allow `experimental` too.
 
 ## Status
